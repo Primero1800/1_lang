@@ -216,3 +216,20 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project specific
+.venv/
+!.env.example
+.idea/
+.vscode/
+*.iml
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+.mypy_cache/
+.ruff_cache/
+__pycache__/
+*.pyc
+app/logs/*.log.*
+*.dockerignore
