@@ -5,11 +5,14 @@ from aiohttp import ClientSession
 from fastapi import Depends
 
 from app.adapters.ai_client import AIClientAbstract, MistralClient
+from app.adapters.vector_client import VectorClientAbstract, QdrantVectorClient
 from app.core.config import settings
 
 aiohttp_session: aiohttp.ClientSession | None = None
 
 ai_client: AIClientAbstract | None = None
+
+vector_client: VectorClientAbstract | None = None
 
 
 async def get_aiohttp_session() -> ClientSession:
@@ -34,3 +37,10 @@ async def get_ai_client(
     if not ai_client:
         ai_client = MistralClient(session)
     return ai_client
+
+
+async def get_vector_client() -> VectorClientAbstract:
+    global vector_client
+    if not vector_client:
+        vector_client = QdrantVectorClient()
+    return vector_client

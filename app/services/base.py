@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.adapters.ai_client import AIClientAbstract
+from app.adapters.vector_client import VectorClientAbstract
 from app.uow import UnitOfWork
 
 
@@ -11,6 +12,7 @@ class BaseDeps:
 
     uow_factory: UnitOfWork
     ai_client: AIClientAbstract
+    vector_client: VectorClientAbstract
 
 
 class BaseServiceAbstract(Protocol):
@@ -36,6 +38,7 @@ class BaseService(BaseServiceAbstract):
         self.uow_factory = base_deps.uow_factory
         self.uow = uow
         self.ai_client = base_deps.ai_client
+        self.vector_client = base_deps.vector_client
 
     async def get(self, *args: Any, **kwargs: Any) -> Any:
         raise NotImplementedError

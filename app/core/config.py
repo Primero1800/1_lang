@@ -1,4 +1,6 @@
 import logging
+from typing import Annotated
+from pydantic import Field
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -32,6 +34,12 @@ class Settings(BaseSettings):
     MISTRAL_MODEL: str = "mistral-small-latest"
     MISTRAL_EMBED_MODEL: str = "mistral-embed"
     MISTRAL_TIMEOUT_SEC: int = 30
+
+    QDRANT_HOST: str
+    QDRANT_PORT: int
+    QDRANT_GRPC_PORT: int
+    QDRANT_API_KEY: Annotated[str, Field(validation_alias="QDRANT__SERVICE__API_KEY")]
+    VECTOR_DB_COLLECTION: str
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"

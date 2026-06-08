@@ -39,5 +39,9 @@ class DBHealthCheckError(BaseCustomException):
     """Raised when the database health check fails"""
 
 
+class VectorDBHealthCheckError(BaseCustomException):
+    """Raised when the vector database health check fails"""
+
+
 class ConnectionException(BaseCustomException):
     """Raised when an external HTTP request fails"""

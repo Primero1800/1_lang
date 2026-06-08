@@ -3,6 +3,9 @@ import logging
 from fastapi import APIRouter, status
 
 from app.api.health_check import router as healthcheck_router
+from app.api.test_router import router as test_router
+
+
 from app.common.logging import log_decorator
 from app.core.config import settings
 
@@ -21,3 +24,4 @@ async def get_version() -> str:
 
 
 router.include_router(healthcheck_router)
+router.include_router(test_router)
