@@ -3,6 +3,7 @@ import os
 from asyncio import AbstractEventLoop
 from collections.abc import AsyncGenerator
 from typing import Any, Generator
+from unittest.mock import AsyncMock
 
 import pytest
 import pytest_asyncio
@@ -60,6 +61,7 @@ async def empty_db(test_engine) -> AsyncGenerator[None, None]:
 async def async_client(test_session_maker) -> AsyncGenerator[AsyncClient, None]:
     from app.main import app
     from app.core.database import get_session
+    from app.dependencies.infrastructure import get_vector_client
     from app.uow import get_uow, get_uow_factory, UnitOfWork
 
     async def _override_get_uow():
@@ -73,9 +75,15 @@ async def async_client(test_session_maker) -> AsyncGenerator[AsyncClient, None]:
     def _override_get_uow_factory():
         return UnitOfWork(session_factory=test_session_maker)
 
+    def _override_get_vector_client():
+        mock = AsyncMock(spec=["collection_exists"])
+        mock.collection_exists = AsyncMock(return_value=True)
+        return mock
+
     app.dependency_overrides[get_uow] = _override_get_uow
     app.dependency_overrides[get_session] = _override_get_session
     app.dependency_overrides[get_uow_factory] = _override_get_uow_factory
+    app.dependency_overrides[get_vector_client] = _override_get_vector_client
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

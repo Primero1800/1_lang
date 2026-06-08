@@ -17,3 +17,18 @@ async def test_health_check_db_fail(async_client: AsyncClient, mocker) -> None:
     )
     response = await async_client.get("/health_check")
     assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_health_check_qdrant_fail(async_client: AsyncClient, mocker) -> None:
+    from app.dependencies.infrastructure import get_vector_client
+    from app.main import app
+
+    mock_vector_client = mocker.AsyncMock(spec=["collection_exists"])
+    mock_vector_client.collection_exists.side_effect = Exception(
+        "Qdrant broker unavailable"
+    )
+    app.dependency_overrides[get_vector_client] = lambda: mock_vector_client
+
+    response = await async_client.get("/health_check")
+    assert response.status_code == 503
