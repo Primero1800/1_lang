@@ -75,8 +75,8 @@ class QdrantVectorClient(VectorClientAbstract):
 
     async def start(self) -> None:
         try:
-            if not await self._client.collection_exists(settings.VECTOR_DB_COLLECTION):
-                await self._client.create_collection(settings.VECTOR_DB_COLLECTION)
+            if not await self.collection_exists(settings.VECTOR_DB_COLLECTION):
+                await self.create_collection(settings.VECTOR_DB_COLLECTION)
         except Exception as exc:
             logger.error("Unexpected error while collection creating", exc_info=exc)
             raise exc

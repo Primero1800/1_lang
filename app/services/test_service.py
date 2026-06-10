@@ -9,6 +9,5 @@ class TestService(BaseService):
     @log_decorator(level=logging.DEBUG)
     async def check(self, text: str) -> Any:
 
-        # embeddings = await self.ai_client.embed(text)
-        # vector = embeddings
-        return None
+        embeddings = await self.ai_client.embed(text)
+        return embeddings
