@@ -32,6 +32,7 @@ RUN pip install --no-cache-dir "poetry==$POETRY_VERSION"
 WORKDIR /app
 
 COPY ./app /app/app
+COPY ./data /app/data
 COPY alembic.ini pyproject.toml poetry.lock* .env* /app/
 
 EXPOSE 8000

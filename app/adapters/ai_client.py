@@ -5,7 +5,7 @@ from typing import Any, Literal, TypedDict
 import aiohttp
 from aiohttp import ClientSession
 
-from app.common.logging import log_decorator
+from app.common.logging import log_decorator, logger
 from app.core.aiohttp_exception_handler import external_request_exception_handler
 from app.core.config import settings
 
@@ -111,7 +111,8 @@ class MistralClient(AIClientAbstract):
         result = await self.__post("/chat/completions", payload)
         try:
             return result["choices"][0]["message"]["content"]
-        except (KeyError, IndexError, TypeError):
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.error("Unexpected error while ai_client request", exc_info=exc)
             return None
 
     @log_decorator(level=logging.DEBUG)
@@ -127,7 +128,8 @@ class MistralClient(AIClientAbstract):
         result = await self.__post("/embeddings", payload)
         try:
             return result["data"][0]["embedding"]
-        except (KeyError, IndexError, TypeError):
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.error("Unexpected error while ai_client embed", exc_info=exc)
             return None
 
     @external_request_exception_handler(is_raise=False)
