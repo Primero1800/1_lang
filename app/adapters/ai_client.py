@@ -52,8 +52,9 @@ class AIClientAbstract(abc.ABC):
     @abc.abstractmethod
     async def embed(
         self,
-        text: str,
+        text: str | list[str],
         model: str | None = None,
+        task_type: Literal["query", "document"] | None = None,
     ) -> list[float] | None:
         pass
 
@@ -118,16 +119,26 @@ class MistralClient(AIClientAbstract):
     @log_decorator(level=logging.DEBUG)
     async def embed(
         self,
-        text: str,
+        text: str | list[str],
         model: str | None = None,
+        task_type: Literal["query", "document"] | None = None,
     ) -> list[float] | None:
+        is_single_string = isinstance(text, str)
+        input_data = [text] if is_single_string else text
+
+        if task_type == "query":
+            input_data = [f"search_query: {t}" for t in input_data]
+        elif task_type == "document":
+            input_data = [f"search_document: {t}" for t in input_data]
+
         payload: dict[str, Any] = {
             "model": model or self._embed_model,
-            "input": [text],
+            "input": input_data,
         }
         result = await self.__post("/embeddings", payload)
         try:
-            return result["data"][0]["embedding"]
+            embeddings = [item["embedding"] for item in result["data"]]
+            return embeddings[0] if is_single_string else embeddings
         except (KeyError, IndexError, TypeError) as exc:
             logger.error("Unexpected error while ai_client embed", exc_info=exc)
             return None

@@ -52,11 +52,12 @@ class VectorClientAbstract(abc.ABC):
     @abc.abstractmethod
     async def search(
         self,
-        collection_name: str,
         query_vector: list[float],
+        collection_name: str | None = None,
         query_filter: Filter | None = None,
         limit: int = 10,
         raise_exception: bool = False,
+        with_payload: bool = True,
     ) -> list[ScoredPoint]:
         pass
 
@@ -144,19 +145,20 @@ class QdrantVectorClient(VectorClientAbstract):
     @log_decorator(level=logging.DEBUG)
     async def search(
         self,
-        collection_name: str,
         query_vector: list[float],
+        collection_name: str | None = None,
         query_filter: Filter | None = None,
         limit: int = 10,
+        with_payload: bool = True,
         raise_exception: bool = False,
     ) -> list[ScoredPoint]:
         try:
             response = await self._client.query_points(
-                collection_name=collection_name,
+                collection_name=collection_name or settings.VECTOR_DB_COLLECTION,
                 query=query_vector,  # type: ignore
                 query_filter=query_filter,
                 limit=limit,
-                with_payload=True,
+                with_payload=with_payload,
                 with_vectors=False,
             )
             return response.points
