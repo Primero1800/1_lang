@@ -21,6 +21,7 @@ dependencies = [
     "grpcio (>=1.81.0,<2.0.0)",
     "grpcio-tools (>=1.81.0,<2.0.0)",
     "langchain-text-splitters (>=1.1.2,<2.0.0)",
+    "python-multipart (>=0.0.32,<0.0.33)",
 ]
 
 [build-system]

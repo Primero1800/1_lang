@@ -68,10 +68,10 @@ class QdrantVectorClient(VectorClientAbstract):
             host=settings.QDRANT_HOST,
             port=settings.QDRANT_PORT,
             grpc_port=settings.QDRANT_GRPC_PORT,
-            prefer_grpc=True,
+            prefer_grpc=settings.QDRANT_PREFER_GRPC,
             api_key=settings.QDRANT_API_KEY,
             check_compatibility=False,
-            https=False,
+            https=settings.QDRANT_HTTPS,
         )
 
     async def start(self) -> None:
@@ -112,7 +112,9 @@ class QdrantVectorClient(VectorClientAbstract):
         vectors_config: VectorParams | None = None,
         raise_exception: bool = False,
     ) -> bool:
-        config = vectors_config or VectorParams(size=1024, distance=Distance.COSINE)
+        config = vectors_config or VectorParams(
+            size=settings.VECTOR_DB_VECTOR_SIZE, distance=Distance.COSINE
+        )
         try:
             return await self._client.create_collection(
                 collection_name=collection_name, vectors_config=config
