@@ -4,13 +4,14 @@ import aiohttp
 from aiohttp import ClientSession
 from fastapi import Depends
 
-from app.adapters.ai_client import AIClientAbstract, MistralClient
+from app.adapters.ai_client import AIClientAbstract, MistralClient, GroqClient
 from app.adapters.vector_client import VectorClientAbstract, QdrantVectorClient
 from app.core.config import settings
 
 aiohttp_session: aiohttp.ClientSession | None = None
 
 ai_client: AIClientAbstract | None = None
+groq_client: AIClientAbstract | None = None
 
 vector_client: VectorClientAbstract | None = None
 
@@ -37,6 +38,15 @@ async def get_ai_client(
     if not ai_client:
         ai_client = MistralClient(session)
     return ai_client
+
+
+async def get_groq_client(
+    session: Annotated[ClientSession, Depends(get_aiohttp_session)],
+) -> AIClientAbstract:
+    global groq_client
+    if not groq_client:
+        groq_client = GroqClient(session)
+    return groq_client
 
 
 async def get_vector_client() -> VectorClientAbstract:

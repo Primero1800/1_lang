@@ -12,6 +12,7 @@ class BaseDeps:
 
     uow_factory: UnitOfWork
     ai_client: AIClientAbstract
+    ai_client2: AIClientAbstract
     vector_client: VectorClientAbstract
 
 
@@ -38,6 +39,7 @@ class BaseService(BaseServiceAbstract):
         self.uow_factory = base_deps.uow_factory
         self.uow = uow
         self.ai_client = base_deps.ai_client
+        self.ai_client2 = base_deps.ai_client2
         self.vector_client = base_deps.vector_client
 
     async def get(self, *args: Any, **kwargs: Any) -> Any:

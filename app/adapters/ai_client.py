@@ -17,6 +17,13 @@ class Message(TypedDict):
     content: str
 
 
+class VisionMessage(TypedDict):
+    """Chat message with multimodal content (text + base64 images)"""
+
+    role: Literal["user", "assistant"]
+    content: list[dict[str, Any]]
+
+
 class AIClientAbstract(abc.ABC):
     """Abstract base class for AI client implementations"""
 
@@ -142,6 +149,108 @@ class MistralClient(AIClientAbstract):
         except (KeyError, IndexError, TypeError) as exc:
             logger.error("Unexpected error while ai_client embed", exc_info=exc)
             return None
+
+    @external_request_exception_handler(is_raise=False)
+    async def __post(self, path: str, payload: dict[str, Any]) -> Any:
+        url = f"{self._BASE_URL}{path}"
+        async with self.session.post(
+            url, json=payload, headers=self._headers, timeout=self._timeout
+        ) as response:
+            response.raise_for_status()
+            return await response.json()
+
+
+class GroqClient(AIClientAbstract):
+    """Groq AI client — LLM inference and vision analysis, no embeddings"""
+
+    _BASE_URL = "https://api.groq.com/openai/v1"
+
+    def __init__(self, aiohttp_session: aiohttp.ClientSession) -> None:
+        self.session: ClientSession = aiohttp_session
+        self._model: str = settings.GROQ_MODEL
+        self._vision_model: str = settings.GROQ_VISION_MODEL
+        self._timeout = aiohttp.ClientTimeout(total=settings.GROQ_TIMEOUT_SEC)
+        self._headers = {
+            "Authorization": f"Bearer {settings.GROQ_API_KEY}",
+            "Content-Type": "application/json",
+        }
+
+    async def start(self) -> None:
+        pass
+
+    async def stop(self) -> None:
+        self.session = None  # type: ignore[assignment]
+
+    @log_decorator(level=logging.DEBUG)
+    async def generate(
+        self,
+        prompt: str,
+        system: str | None = None,
+        model: str | None = None,
+        temperature: float | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> str | None:
+        messages: list[Message] = []
+        if system:
+            messages.append({"role": "system", "content": system})
+        messages.append({"role": "user", "content": prompt})
+        return await self.chat(messages=messages, model=model, temperature=temperature)
+
+    @log_decorator(level=logging.DEBUG)
+    async def chat(
+        self,
+        messages: list[Message],
+        model: str | None = None,
+        temperature: float | None = None,
+        options: dict[str, Any] | None = None,
+    ) -> str | None:
+        payload: dict[str, Any] = {
+            "model": model or self._model,
+            "messages": messages,
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
+        result = await self.__post("/chat/completions", payload)
+        try:
+            return result["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.error("Unexpected error while groq_client chat", exc_info=exc)
+            return None
+
+    @log_decorator(level=logging.DEBUG)
+    async def vision_chat(
+        self,
+        images_b64: list[str],
+        prompt: str,
+        model: str | None = None,
+        temperature: float | None = None,
+    ) -> str | None:
+        content: list[dict[str, Any]] = [
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+            for b64 in images_b64
+        ]
+        content.append({"type": "text", "text": prompt})
+        messages: list[VisionMessage] = [{"role": "user", "content": content}]
+        payload: dict[str, Any] = {
+            "model": model or self._vision_model,
+            "messages": messages,
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
+        result = await self.__post("/chat/completions", payload)
+        try:
+            return result["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.error("Unexpected error while groq_client vision_chat", exc_info=exc)
+            return None
+
+    async def embed(
+        self,
+        text: str | list[str],
+        model: str | None = None,
+        task_type: Literal["query", "document"] | None = None,
+    ) -> list[float] | None:
+        raise NotImplementedError("Groq does not support embeddings")
 
     @external_request_exception_handler(is_raise=False)
     async def __post(self, path: str, payload: dict[str, Any]) -> Any:
