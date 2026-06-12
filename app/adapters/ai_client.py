@@ -1,4 +1,5 @@
 import abc
+import asyncio
 import logging
 from typing import Any, Literal, TypedDict
 
@@ -109,6 +110,7 @@ class MistralClient(AIClientAbstract):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
+        timeout: aiohttp.ClientTimeout | None = None,
     ) -> str | None:
         payload: dict[str, Any] = {
             "model": model or self._model,
@@ -116,7 +118,9 @@ class MistralClient(AIClientAbstract):
         }
         if temperature is not None:
             payload["temperature"] = temperature
-        result = await self.__post("/chat/completions", payload)
+        if options:
+            payload.update(options)
+        result = await self.__post("/chat/completions", payload, timeout=timeout)
         try:
             return result["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -150,11 +154,43 @@ class MistralClient(AIClientAbstract):
             logger.error("Unexpected error while ai_client embed", exc_info=exc)
             return None
 
+    @log_decorator(level=logging.DEBUG)
+    async def vision_chat(
+        self,
+        images_b64: list[str],
+        prompt: str,
+        model: str = "pixtral-12b-2409",
+        temperature: float | None = None,
+    ) -> str | None:
+        content: list[dict[str, Any]] = [
+            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+            for b64 in images_b64
+        ]
+        content.append({"type": "text", "text": prompt})
+        payload: dict[str, Any] = {
+            "model": model,
+            "messages": [{"role": "user", "content": content}],
+        }
+        if temperature is not None:
+            payload["temperature"] = temperature
+        vision_timeout = aiohttp.ClientTimeout(total=120)
+        result = await self.__post("/chat/completions", payload, timeout=vision_timeout)
+        try:
+            return result["choices"][0]["message"]["content"]
+        except (KeyError, IndexError, TypeError) as exc:
+            logger.error("Unexpected error while mistral vision_chat", exc_info=exc)
+            return None
+
     @external_request_exception_handler(is_raise=False)
-    async def __post(self, path: str, payload: dict[str, Any]) -> Any:
+    async def __post(
+        self,
+        path: str,
+        payload: dict[str, Any],
+        timeout: aiohttp.ClientTimeout | None = None,
+    ) -> Any:
         url = f"{self._BASE_URL}{path}"
         async with self.session.post(
-            url, json=payload, headers=self._headers, timeout=self._timeout
+            url, json=payload, headers=self._headers, timeout=timeout or self._timeout
         ) as response:
             response.raise_for_status()
             return await response.json()
@@ -210,6 +246,8 @@ class GroqClient(AIClientAbstract):
         }
         if temperature is not None:
             payload["temperature"] = temperature
+        if options:
+            payload.update(options)
         result = await self.__post("/chat/completions", payload)
         try:
             return result["choices"][0]["message"]["content"]
@@ -255,8 +293,21 @@ class GroqClient(AIClientAbstract):
     @external_request_exception_handler(is_raise=False)
     async def __post(self, path: str, payload: dict[str, Any]) -> Any:
         url = f"{self._BASE_URL}{path}"
-        async with self.session.post(
-            url, json=payload, headers=self._headers, timeout=self._timeout
-        ) as response:
-            response.raise_for_status()
-            return await response.json()
+        retries = 3
+        max_retry_wait = 60.0
+        for attempt in range(retries + 1):
+            async with self.session.post(
+                url, json=payload, headers=self._headers, timeout=self._timeout
+            ) as response:
+                if response.status == 429 and attempt < retries:
+                    retry_after = float(response.headers.get("Retry-After", 10))
+                    if retry_after > max_retry_wait:
+                        logger.warning(
+                            f"[Groq] Rate limited, Retry-After={retry_after:.0f}s exceeds limit — giving up"
+                        )
+                        return None
+                    logger.warning(f"[Groq] Rate limited, retry in {retry_after:.1f}s")
+                    await asyncio.sleep(retry_after)
+                    continue
+                response.raise_for_status()
+                return await response.json()
