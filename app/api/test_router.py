@@ -1,12 +1,13 @@
 import logging
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile
+from fastapi import APIRouter, Depends, File, UploadFile
 
 from app.common.logging import log_decorator
 from app.dependencies.services import (
     get_test_service_without_session,
 )
+from app.pyd.responses import PhraseVariantsRequest, PhraseVariantsResponse
 from app.services.base import BaseServiceAbstract
 from app.services.test_service import TestService
 
@@ -14,6 +15,170 @@ router = APIRouter(
     prefix="/test_routes",
     tags=["Test"],
 )
+
+PROMPT = """Опиши подробно, ПОДРОБНО(!) что происходит на изображениях: 
+    чем занимается человек, что открыто на экране, какое его поведение по плану:
+    конкретно нужно четкое описание в одном расширенном предложении по тэгам:
+    1. поведение (как он себя ведет, что делает, может засыпает или наоборот слишком бодрый) - предложение из 5-6 слов, 
+    2. внешность (опрятный, причесанный, ухоженный, лысый, косой, хромой, больной) - предложение из 5-6 слов, 
+    3. возраст (старый, молодой, сопляк, пердун, сосунок) - предложение из 5-6 слов, 
+    4. настроение (приуныл, ржет, веселый, в петлю полезть готов - предложение из 5-6 слов, 
+    5. поза (сидит, раком, как царь, забитый) и тп. по такому принципу - предложение из 5-6 слов.
+    6. прическа (сама прическа или головной убор по-простому, если прически не видно) - предложение из 5-6 слов
+    Очень подробно надо, придирчиво. При этом вариант может быть в том числе вопросительным или восклицательным.
+
+    для каждого фото надо выдать по 5 оригинальных, отличных друг от друга вариантов пунктов от 1 до 5 тэгов в виде
+    1. поведение: [Вариант 1_1. Вариант 1_2. Вариант 1_3. Вариант 1_4. Вариант 1_5]
+    2. внешность: [Вариант 2_1. Вариант 2_2. Вариант 2_3. Вариант 2_4. Вариант 2_5]
+    ...
+    6 прическа: [Вариант 6_1. Вариант 6_2. Вариант 6_3. Вариант 6_4. Вариант 6_5]
+
+    Обращаю внимание, что каждый вариант (Вариант 1_1 и д.р) - это не одно слово, а целое предложение из 5-6 слов - этот пункт
+    очень важен, не игнорируй его.
+
+    И очень важное дополнительное условие - варианты в рамках одного тега даже в разных фотках не должны повторяться,
+    а оставаться уникальными. Т.е. если в первой фотографии в прическе есть например "Нет волос на голове",
+    то такого варианта не должно быть в описании прически остальных фотографий. Т.е. в рамках одного тега все
+    варианты для всех фотографий должны быть уникальны.
+
+    Все варианты возвращает в нижнем регистре lower(). Ответ должен быть списком list из списков list словарей dict
+    Никаких дополнительных фраз - только list[list[dict[int, str]]]
+    [
+        [
+            {1: ["Вариант 1_1", "Вариант 1_2", .. "Вариант 1_5"]},
+            {2: ["Вариант 2_1", "Вариант 2_2", .. "Вариант 2_5"]},
+            ...
+            {6: ["Вариант 6_1", "Вариант 6_2", .. "Вариант 6_5"]},
+        ],
+        [
+            {1: ["Вариант 1_1", "Вариант 1_2", .. "Вариант 1_5"]},
+            {2: ["Вариант 2_1", "Вариант 2_2", .. "Вариант 2_5"]},
+            ...
+            {6: ["Вариант 6_1", "Вариант 6_2", .. "Вариант 6_5"]},
+        ],
+        ..
+        [
+            {1: ["Вариант 1_1", "Вариант 1_2", .. "Вариант 1_5"]},
+            {2: ["Вариант 2_1", "Вариант 2_2", .. "Вариант 2_5"]},
+            ...
+            {6: ["Вариант 6_1", "Вариант 6_2", .. "Вариант 6_5"]},
+        ],
+    ]
+    где ключи - номера тэгов из описания
+    """
+
+
+@router.post(
+    "/pixtral-vision",
+    status_code=200,
+    response_model=list[PhraseVariantsRequest],
+    openapi_extra={
+        "requestBody": {
+            "required": True,
+            "content": {
+                "multipart/form-data": {
+                    "schema": {
+                        "type": "object",
+                        "required": ["images"],
+                        "properties": {
+                            "images": {
+                                "type": "array",
+                                "items": {"type": "string", "format": "binary"},
+                            },
+                        },
+                    }
+                }
+            },
+        }
+    },
+)
+@log_decorator(level=logging.INFO)
+async def pixtral_vision(
+    test_service: Annotated[TestService, Depends(get_test_service_without_session)],
+    images: Annotated[list[UploadFile], File()],
+) -> Any:
+    images_raw: list[bytes] = []
+    try:
+        for image in images:
+            images_raw.append(await image.read())
+    finally:
+        for image in images:
+            await image.close()
+    batch = await test_service.pixtral_vision(images_raw=images_raw, prompt=PROMPT)
+    return batch
+
+
+@router.post(
+    "/generate-variants-batch",
+    status_code=200,
+    response_model=list[PhraseVariantsResponse | None],
+)
+@log_decorator(level=logging.INFO)
+async def generate_variants_batch(
+    body: list[PhraseVariantsRequest],
+    test_service: Annotated[TestService, Depends(get_test_service_without_session)],
+) -> Any:
+    phrases = [(item.phrase, item.tag) for item in body]
+    count = body[0].count if body else 5
+    results = await test_service.generate_variants_batch(phrases=phrases, count=count)
+    return results
+
+
+@router.post(
+    "/generate-variants",
+    status_code=200,
+    response_model=PhraseVariantsResponse | None,
+)
+@log_decorator(level=logging.INFO)
+async def generate_variants(
+    body: PhraseVariantsRequest,
+    test_service: Annotated[TestService, Depends(get_test_service_without_session)],
+) -> Any:
+    variants = await test_service.generate_variants(  # type: ignore
+        phrase=body.phrase,
+        tag=body.tag,
+        count=body.count,
+    )
+    if variants is None:
+        return None
+    return PhraseVariantsResponse(original=body.phrase, tag=body.tag, variants=variants)  # type: ignore
+
+
+@router.post(
+    "/generate-variants-mistral",
+    status_code=200,
+    response_model=PhraseVariantsResponse | None,
+)
+@log_decorator(level=logging.INFO)
+async def generate_variants_mistral(
+    body: PhraseVariantsRequest,
+    test_service: Annotated[TestService, Depends(get_test_service_without_session)],
+) -> PhraseVariantsResponse | None:
+    variants = await test_service.generate_variants_mistral(
+        phrase=body.phrase,
+        tag=body.tag,
+        count=body.count,
+    )
+    if variants is None:
+        return None
+    return PhraseVariantsResponse(original=body.phrase, tag=body.tag, variants=variants)
+
+
+@router.post(
+    "/generate-variants-batch-mistral",
+    status_code=200,
+    response_model=list[PhraseVariantsResponse | None],
+)
+@log_decorator(level=logging.INFO)
+async def generate_variants_batch_mistral(
+    body: list[PhraseVariantsRequest],
+    test_service: Annotated[TestService, Depends(get_test_service_without_session)],
+) -> Any:
+    phrases = [(item.phrase, item.tag) for item in body]
+    count = body[0].count if body else 5
+    return await test_service.generate_variants_batch_mistral(
+        phrases=phrases, count=count
+    )
 
 
 @router.get(
@@ -58,36 +223,13 @@ async def test(
 async def test_vision(
     test_service: Annotated[TestService, Depends(get_test_service_without_session)],
     images: Annotated[list[UploadFile], File()],
-    prompt: Annotated[
-        str, Form()
-    ] = "Опиши подробно что происходит на изображениях: чем занимается человек, что открыто на экране, какое его поведение. Очень подробно надо, придирчиво",
 ) -> str | None:
     images_raw: list[bytes] = []
-    prompt = """Опиши подробно что происходит на изображениях: 
-    чем занимается человек, что открыто на экране, какое его поведение. 
-    конкретно нужно четкое описание в трех-четырех предложениях по тегам
-    1. поведение (как он ебя ведет, что делает, может засыпает или наоборот слишком бодрый), 
-    2. внешность (опрятный, причесанный, ухоженный, лысый, косой, хромой, больной), 
-    3. возраст (старый, молодой, сопляк, пердун, сосунок), 
-    4. настроение (приуныл, ржет, веселый, в петлю полезть готов, 
-    5. поза (сидит, раком, как царь, забитый) и тп. по такому принципу.
-    Очень подробно надо, придирчиво. 
-    При этом каждая фотка должна быть проанализирована по всем этим и иным параметрам в вариациях - 
-    A. крайне грубо (аморально), B. очень грубо, 
-    C. сносно, D.нейтрально, E.нормально, 
-    F.приятно, G.очень  доброжелательно, H.крайне доброжелательно (до тошноты)
-    Соотвественно ответы должны быть по каждому фото в виде
-    1 фото A1 - "текст на два-три предложения", A2 - ... G5 - ""..
-    2 фото A1 - "текст на два-три предложения", A2 - ... G5 - ""..
-    т.е для каждого фото должны быть описаны все сценарии - (A1, A2, A3, A4, A5, B1, B2, B3, B4, B5, .... H1, H2, H3, H4, H5)
-    пояснение: D.нейтрально - это примерно то, что ты и видишь. Остальные настроения от A до H должны описывать
-    то же самое, но согласно своему видению: если настроение A - значит крайне грубо все описать в том чиле аморально можно,
-    если настроение G - то максимально возвышенно и хвалебно.
-    """
+
     try:
         for image in images:
             images_raw.append(await image.read())
     finally:
         for image in images:
             await image.close()
-    return await test_service.vision(images_raw=images_raw, prompt=prompt)
+    return await test_service.vision(images_raw=images_raw, prompt=PROMPT)
