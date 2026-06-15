@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.logging import logger
 from app.core.database import async_database_session_maker
+from app.repositories.phrase_repository import PhraseRepository
 
 
 class UnitOfWork:
@@ -18,6 +19,7 @@ class UnitOfWork:
 
     async def __aenter__(self) -> Any:
         self.session = self.session_factory()
+        self.phrase_repository = PhraseRepository(self.session)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:

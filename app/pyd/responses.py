@@ -21,3 +21,9 @@ class PhraseVariantsResponse(BaseModel):
     original: str
     tag: str
     variants: dict[str, dict[str, list[str]]]  # {mood: {gender: [phrases]}}
+
+
+class UploadImagesResponse(BaseModel):
+    phrases_found: int
+    inserted: int
+    skipped: int

@@ -11,6 +11,8 @@ from app.dependencies.infrastructure import (
 )
 from app.services.base import BaseDeps, BaseService
 from app.services.health_check_service import HealthCheckService
+from app.services.phrase_service import PhraseService
+from app.services.prompt_service import PromptService
 from app.services.test_service import TestService
 from app.uow import UnitOfWork, get_uow_factory, get_uow
 
@@ -60,3 +62,10 @@ get_health_check_service_without_session = _create_service_without_session(
     HealthCheckService
 )
 get_test_service_without_session = _create_service_without_session(TestService)
+
+get_phrase_service = _create_service(PhraseService)
+get_phrase_service_without_session = _create_service_without_session(PhraseService)
+
+
+def get_prompt_service() -> PromptService:
+    return PromptService()
