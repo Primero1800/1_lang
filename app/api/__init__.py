@@ -20,7 +20,14 @@ router = APIRouter()
 )
 @log_decorator(logging.INFO)
 async def get_version() -> str:
-    """Retrieve application name and version"""
+    """Retrieve application name and version
+
+    :role:
+        public
+
+    :returns:
+        version_string: formatted application name and version
+    """
     return f"{settings.APP_NAME}, v{settings.APP_VERSION}"
 
 

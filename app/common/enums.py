@@ -2,6 +2,8 @@ from enum import Enum
 
 
 class TagEnum(str, Enum):
+    """Observation categories used to tag vision model output"""
+
     BEHAVIOR = "behavior"
     APPEARANCE = "appearance"
     AGE = "age"
@@ -11,11 +13,15 @@ class TagEnum(str, Enum):
 
 
 class LangEnum(str, Enum):
+    """Supported phrase languages"""
+
     RU = "ru"
     EN = "en"
 
 
 class PhraseStatusEnum(str, Enum):
+    """Processing pipeline statuses for phrases"""
+
     DRAFT = "draft"
     GENERATING_IN_PROGRESS = "generating_in_progress"
     GENERATING_DONE = "generating_done"

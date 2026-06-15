@@ -13,6 +13,16 @@ class BaseCustomException(Exception):
         status_code: int = status.HTTP_503_SERVICE_UNAVAILABLE,
         headers: dict[str, str] | None = None,
     ) -> None:
+        """Initialize the exception
+
+        :param:
+            detail: human-readable error detail message or dict
+            status_code: HTTP status code to return
+            headers: optional HTTP response headers
+
+        :returns:
+            None
+        """
         super().__init__(detail)
         self.status_code = status_code
         self.detail = detail
@@ -28,6 +38,16 @@ class IntegrityDataException(BaseCustomException):
         status_code: int = status.HTTP_503_SERVICE_UNAVAILABLE,
         headers: dict[str, str] | None = None,
     ) -> None:
+        """Initialize the exception, extracting the DETAIL clause from the PG error string
+
+        :param:
+            detail: raw PostgreSQL error string containing DETAIL clause
+            status_code: HTTP status code to return
+            headers: optional HTTP response headers
+
+        :returns:
+            None
+        """
         detail_text = re.search(r"DETAIL: (.+)", detail or "")
         refined_message = detail_text.group(1).strip() if detail_text else detail
         super().__init__(

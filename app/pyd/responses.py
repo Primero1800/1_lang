@@ -12,18 +12,24 @@ class HTTPExceptionResponse(BaseModel):
 
 
 class PhraseVariantsRequest(BaseModel):
+    """Request body for single phrase variant generation"""
+
     phrase: str
     tag: str
     count: int = Field(default=5, ge=1, le=10)
 
 
 class PhraseVariantsResponse(BaseModel):
+    """Response containing generated phrase variants grouped by mood and gender"""
+
     original: str
     tag: str
     variants: dict[str, dict[str, list[str]]]  # {mood: {gender: [phrases]}}
 
 
 class UploadImagesResponse(BaseModel):
+    """Response summarising the result of an image upload pipeline batch"""
+
     phrases_found: int
     inserted: int
     skipped: int
