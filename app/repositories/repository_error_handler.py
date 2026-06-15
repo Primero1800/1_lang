@@ -13,6 +13,15 @@ from app.common.logging import logger
 
 
 def sqlalchemy_exception_handler(func):
+    """Wrap an async repository method to translate known IntegrityErrors into IntegrityDataException
+
+    :param:
+        func: the async repository method to wrap
+
+    :returns:
+        wrapper: the wrapped coroutine function
+    """
+
     @wraps(func)
     async def wrapper(*args, **kwargs):
         try:
@@ -47,6 +56,14 @@ def sqlalchemy_exception_handler(func):
 
 
 def repository_error_handler(cls):
+    """Class decorator that wraps all async methods with sqlalchemy_exception_handler
+
+    :param:
+        cls: the repository class to decorate
+
+    :returns:
+        cls: the same class with all async methods wrapped
+    """
     for name, method in list(vars(cls).items()):
         if name.startswith("__"):
             continue

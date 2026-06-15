@@ -13,6 +13,15 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
     async def dispatch(
         self, request: Request, call_next: RequestResponseEndpoint
     ) -> Response:
+        """Process every request, catch unhandled errors, and log slow responses
+
+        :param:
+            request: the incoming HTTP request
+            call_next: the next middleware or route handler
+
+        :returns:
+            response: the HTTP response, or a 500 JSON error on unhandled exception
+        """
         start_time = time.time()
         try:
             response = await call_next(request)

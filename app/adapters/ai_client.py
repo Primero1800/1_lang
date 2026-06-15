@@ -30,11 +30,19 @@ class AIClientAbstract(abc.ABC):
 
     @abc.abstractmethod
     async def start(self) -> None:
-        pass
+        """Start the client and initialise any internal resources
+
+        :returns:
+            None
+        """
 
     @abc.abstractmethod
     async def stop(self) -> None:
-        pass
+        """Stop the client and release any internal resources
+
+        :returns:
+            None
+        """
 
     @abc.abstractmethod
     async def generate(
@@ -45,7 +53,18 @@ class AIClientAbstract(abc.ABC):
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
     ) -> str | None:
-        pass
+        """Generate a completion from a single user prompt
+
+        :param:
+            prompt: the user message text
+            system: optional system instruction
+            model: model identifier override
+            temperature: sampling temperature override
+            options: additional provider-specific payload fields
+
+        :returns:
+            text: generated text, or None on failure
+        """
 
     @abc.abstractmethod
     async def chat(
@@ -55,7 +74,17 @@ class AIClientAbstract(abc.ABC):
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
     ) -> str | None:
-        pass
+        """Send a multi-turn chat request
+
+        :param:
+            messages: ordered list of role/content message dicts
+            model: model identifier override
+            temperature: sampling temperature override
+            options: additional provider-specific payload fields
+
+        :returns:
+            text: assistant reply text, or None on failure
+        """
 
     @abc.abstractmethod
     async def embed(
@@ -64,7 +93,16 @@ class AIClientAbstract(abc.ABC):
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
     ) -> list[float] | None:
-        pass
+        """Compute embeddings for one or more text inputs
+
+        :param:
+            text: a single string or list of strings to embed
+            model: embedding model identifier override
+            task_type: 'query' or 'document' prefix strategy
+
+        :returns:
+            embedding: a single vector (str input) or list of vectors (list input), or None on failure
+        """
 
 
 class MistralClient(AIClientAbstract):
@@ -73,6 +111,14 @@ class MistralClient(AIClientAbstract):
     _BASE_URL = "https://api.mistral.ai/v1"
 
     def __init__(self, aiohttp_session: aiohttp.ClientSession) -> None:
+        """Initialize the Mistral client with a shared aiohttp session
+
+        :param:
+            aiohttp_session: the shared aiohttp ClientSession
+
+        :returns:
+            None
+        """
         self.session: ClientSession = aiohttp_session
         self._model: str = settings.MISTRAL_MODEL
         self._embed_model: str = settings.MISTRAL_EMBED_MODEL
@@ -83,9 +129,18 @@ class MistralClient(AIClientAbstract):
         }
 
     async def start(self) -> None:
-        """No-op: session is injected via constructor"""
+        """No-op: session is injected via constructor
+
+        :returns:
+            None
+        """
 
     async def stop(self) -> None:
+        """Release the aiohttp session reference
+
+        :returns:
+            None
+        """
         self.session = None  # type: ignore[assignment]
 
     @log_decorator(level=logging.DEBUG)
@@ -97,6 +152,18 @@ class MistralClient(AIClientAbstract):
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
     ) -> str | None:
+        """Build a single-turn message list and delegate to chat
+
+        :param:
+            prompt: the user message text
+            system: optional system instruction prepended to messages
+            model: model identifier override
+            temperature: sampling temperature override
+            options: additional payload fields passed to chat
+
+        :returns:
+            text: generated text, or None on failure
+        """
         messages: list[Message] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -112,6 +179,18 @@ class MistralClient(AIClientAbstract):
         options: dict[str, Any] | None = None,
         timeout: aiohttp.ClientTimeout | None = None,
     ) -> str | None:
+        """Send a multi-turn chat request to the Mistral API
+
+        :param:
+            messages: ordered list of role/content message dicts
+            model: model identifier override
+            temperature: sampling temperature override
+            options: additional payload fields merged into request body
+            timeout: per-request timeout override
+
+        :returns:
+            text: assistant reply text, or None on failure
+        """
         payload: dict[str, Any] = {
             "model": model or self._model,
             "messages": messages,
@@ -134,6 +213,16 @@ class MistralClient(AIClientAbstract):
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
     ) -> list[float] | None:
+        """Compute Mistral embeddings for one or more text inputs
+
+        :param:
+            text: a single string or list of strings to embed
+            model: embedding model identifier override
+            task_type: optional 'query' or 'document' prefix strategy
+
+        :returns:
+            embedding: a single vector (str input) or list of vectors (list input), or None on failure
+        """
         is_single_string = isinstance(text, str)
         input_data = [text] if is_single_string else text
 
@@ -162,6 +251,17 @@ class MistralClient(AIClientAbstract):
         model: str = "pixtral-12b-2409",
         temperature: float | None = None,
     ) -> str | None:
+        """Send images and a text prompt to the Pixtral vision model
+
+        :param:
+            images_b64: list of base64-encoded JPEG image strings
+            prompt: instruction text accompanying the images
+            model: vision model identifier (default pixtral-12b-2409)
+            temperature: sampling temperature override
+
+        :returns:
+            text: model response text, or None on failure
+        """
         content: list[dict[str, Any]] = [
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
             for b64 in images_b64
@@ -202,6 +302,14 @@ class GroqClient(AIClientAbstract):
     _BASE_URL = "https://api.groq.com/openai/v1"
 
     def __init__(self, aiohttp_session: aiohttp.ClientSession) -> None:
+        """Initialize the Groq client with a shared aiohttp session
+
+        :param:
+            aiohttp_session: the shared aiohttp ClientSession
+
+        :returns:
+            None
+        """
         self.session: ClientSession = aiohttp_session
         self._model: str = settings.GROQ_MODEL
         self._vision_model: str = settings.GROQ_VISION_MODEL
@@ -212,9 +320,18 @@ class GroqClient(AIClientAbstract):
         }
 
     async def start(self) -> None:
-        pass
+        """No-op: session is injected via constructor
+
+        :returns:
+            None
+        """
 
     async def stop(self) -> None:
+        """Release the aiohttp session reference
+
+        :returns:
+            None
+        """
         self.session = None  # type: ignore[assignment]
 
     @log_decorator(level=logging.DEBUG)
@@ -226,6 +343,18 @@ class GroqClient(AIClientAbstract):
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
     ) -> str | None:
+        """Build a single-turn message list and delegate to chat
+
+        :param:
+            prompt: the user message text
+            system: optional system instruction prepended to messages
+            model: model identifier override
+            temperature: sampling temperature override
+            options: additional payload fields passed to chat
+
+        :returns:
+            text: generated text, or None on failure
+        """
         messages: list[Message] = []
         if system:
             messages.append({"role": "system", "content": system})
@@ -240,6 +369,17 @@ class GroqClient(AIClientAbstract):
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
     ) -> str | None:
+        """Send a multi-turn chat request to the Groq API
+
+        :param:
+            messages: ordered list of role/content message dicts
+            model: model identifier override
+            temperature: sampling temperature override
+            options: additional payload fields merged into request body
+
+        :returns:
+            text: assistant reply text, or None on failure
+        """
         payload: dict[str, Any] = {
             "model": model or self._model,
             "messages": messages,
@@ -263,6 +403,17 @@ class GroqClient(AIClientAbstract):
         model: str | None = None,
         temperature: float | None = None,
     ) -> str | None:
+        """Send images and a text prompt to the Groq vision model
+
+        :param:
+            images_b64: list of base64-encoded JPEG image strings
+            prompt: instruction text accompanying the images
+            model: vision model identifier override
+            temperature: sampling temperature override
+
+        :returns:
+            text: model response text, or None on failure
+        """
         content: list[dict[str, Any]] = [
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
             for b64 in images_b64
@@ -288,6 +439,19 @@ class GroqClient(AIClientAbstract):
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
     ) -> list[float] | None:
+        """Not implemented: Groq does not support embeddings
+
+        :param:
+            text: text input (unused)
+            model: model identifier (unused)
+            task_type: task type hint (unused)
+
+        :raise:
+            NotImplementedError: always
+
+        :returns:
+            None
+        """
         raise NotImplementedError("Groq does not support embeddings")
 
     @external_request_exception_handler(is_raise=False)

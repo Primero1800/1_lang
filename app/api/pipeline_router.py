@@ -19,7 +19,7 @@ router = APIRouter(
 
 
 @router.post(
-    "/upload",
+    "/w1_upload",
     response_model=UploadImagesResponse,
     status_code=status.HTTP_201_CREATED,
     openapi_extra={
@@ -43,7 +43,7 @@ router = APIRouter(
     },
 )
 @log_decorator(level=logging.INFO)
-async def upload_images(
+async def w1_upload_images(
     phrase_service: Annotated[
         PhraseService, Depends(get_phrase_service_without_session)
     ],
@@ -51,6 +51,20 @@ async def upload_images(
     images: Annotated[list[UploadFile], File()],
     lang: Annotated[Literal["ru", "en"], Query()] = "ru",
 ) -> Any:
+    """Upload a batch of images and trigger the phrase extraction pipeline
+
+    :role:
+        user
+
+    :param:
+        phrase_service: service responsible for the vision pipeline
+        prompt_service: service that provides the vision prompt
+        images: one or more uploaded image files
+        lang: target language for extracted phrases ('ru' or 'en')
+
+    :returns:
+        result: UploadImagesResponse with phrases_found, inserted, and skipped counts
+    """
     images_raw: list[bytes] = []
     try:
         for image in images:

@@ -73,7 +73,21 @@ _PROMPTS: dict[tuple[str, str], str] = {
 
 
 class PromptService:
+    """Registry of pre-built prompts keyed by (marker, lang) tuples"""
+
     def get(self, marker: str, lang: str) -> str:
+        """Return the prompt string for the given marker and language
+
+        :param:
+            marker: prompt identifier (e.g. 'pixtral_vision')
+            lang: language code ('ru' or 'en')
+
+        :raise:
+            ValueError: if no prompt is registered for the given (marker, lang) pair
+
+        :returns:
+            prompt: the complete prompt string
+        """
         key = (marker, lang)
         prompt = _PROMPTS.get(key)
         if prompt is None:

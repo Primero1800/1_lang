@@ -30,8 +30,17 @@ async def health_check(
 ) -> None:
     """Check health of all infrastructure components
 
+    :role:
+        public
+
+    :param:
+        health_check_service: service that runs DB and vector DB checks
+
     :raise:
         HTTPException: 503 if any component is unavailable
+
+    :returns:
+        None
     """
     try:
         return await health_check_service.check()
