@@ -34,7 +34,7 @@ class Phrase(Base):
         comment="Статус обработки",
     )
 
-    phrase_data: Mapped["PhraseData"] = relationship(  # noqa: F821
+    phrase_data: Mapped["PhraseData"] = relationship(  # type: ignore[name-defined]  # noqa: F821
         back_populates="phrase",
         cascade="all, delete-orphan",
     )

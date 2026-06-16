@@ -1,15 +1,14 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 from httpx import AsyncClient
+
+# --- /pipeline/w1_upload ---
 
 
 @pytest.mark.asyncio
 async def test_upload_images_success(async_client: AsyncClient) -> None:
     from app.main import app
-    from app.dependencies.services import (
-        get_phrase_service_without_session,
-        get_prompt_service,
-    )
+    from app.dependencies.services import get_phrase_service_without_session
 
     mock_phrase_service = AsyncMock()
     mock_phrase_service.upload_images.return_value = {
@@ -17,13 +16,9 @@ async def test_upload_images_success(async_client: AsyncClient) -> None:
         "inserted": 4,
         "skipped": 1,
     }
-    mock_prompt_service = MagicMock()
-    mock_prompt_service.get.return_value = "test prompt"
-
     app.dependency_overrides[get_phrase_service_without_session] = lambda: (
         mock_phrase_service
     )
-    app.dependency_overrides[get_prompt_service] = lambda: mock_prompt_service
 
     response = await async_client.post(
         "/pipeline/w1_upload",
@@ -40,10 +35,7 @@ async def test_upload_images_success(async_client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_upload_images_no_phrases_found(async_client: AsyncClient) -> None:
     from app.main import app
-    from app.dependencies.services import (
-        get_phrase_service_without_session,
-        get_prompt_service,
-    )
+    from app.dependencies.services import get_phrase_service_without_session
 
     mock_phrase_service = AsyncMock()
     mock_phrase_service.upload_images.return_value = {
@@ -51,13 +43,9 @@ async def test_upload_images_no_phrases_found(async_client: AsyncClient) -> None
         "inserted": 0,
         "skipped": 0,
     }
-    mock_prompt_service = MagicMock()
-    mock_prompt_service.get.return_value = "test prompt"
-
     app.dependency_overrides[get_phrase_service_without_session] = lambda: (
         mock_phrase_service
     )
-    app.dependency_overrides[get_prompt_service] = lambda: mock_prompt_service
 
     response = await async_client.post(
         "/pipeline/w1_upload",
@@ -74,10 +62,7 @@ async def test_upload_images_no_phrases_found(async_client: AsyncClient) -> None
 @pytest.mark.asyncio
 async def test_upload_images_with_lang_en(async_client: AsyncClient) -> None:
     from app.main import app
-    from app.dependencies.services import (
-        get_phrase_service_without_session,
-        get_prompt_service,
-    )
+    from app.dependencies.services import get_phrase_service_without_session
 
     mock_phrase_service = AsyncMock()
     mock_phrase_service.upload_images.return_value = {
@@ -85,13 +70,9 @@ async def test_upload_images_with_lang_en(async_client: AsyncClient) -> None:
         "inserted": 3,
         "skipped": 0,
     }
-    mock_prompt_service = MagicMock()
-    mock_prompt_service.get.return_value = "english test prompt"
-
     app.dependency_overrides[get_phrase_service_without_session] = lambda: (
         mock_phrase_service
     )
-    app.dependency_overrides[get_prompt_service] = lambda: mock_prompt_service
 
     response = await async_client.post(
         "/pipeline/w1_upload?lang=en",
@@ -99,10 +80,8 @@ async def test_upload_images_with_lang_en(async_client: AsyncClient) -> None:
     )
 
     assert response.status_code == 201
-    mock_prompt_service.get.assert_called_once_with("pixtral_vision", "en")
     mock_phrase_service.upload_images.assert_called_once_with(
         images_raw=[b"fake image data"],
-        prompt="english test prompt",
         lang="en",
     )
 
@@ -110,13 +89,63 @@ async def test_upload_images_with_lang_en(async_client: AsyncClient) -> None:
 @pytest.mark.asyncio
 async def test_upload_images_no_files_returns_422(async_client: AsyncClient) -> None:
     from app.main import app
-    from app.dependencies.services import (
-        get_phrase_service_without_session,
-        get_prompt_service,
-    )
+    from app.dependencies.services import get_phrase_service_without_session
 
     app.dependency_overrides[get_phrase_service_without_session] = lambda: AsyncMock()
-    app.dependency_overrides[get_prompt_service] = lambda: MagicMock()
 
     response = await async_client.post("/pipeline/w1_upload")
     assert response.status_code == 422
+
+
+# --- /pipeline/w2_generate ---
+
+
+@pytest.mark.asyncio
+async def test_w2_generate_success(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_data_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w2_generate.return_value = {"processed": 5, "failed": 1, "skipped": 0}
+    app.dependency_overrides[get_phrase_data_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w2_generate")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["processed"] == 5
+    assert data["failed"] == 1
+    assert data["skipped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_w2_generate_skipped_when_no_batch(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_data_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w2_generate.return_value = {"processed": 0, "failed": 0, "skipped": 1}
+    app.dependency_overrides[get_phrase_data_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w2_generate")
+    assert response.status_code == 200
+    assert response.json()["skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_w2_generate_custom_batch_size(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_data_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w2_generate.return_value = {"processed": 3, "failed": 0, "skipped": 0}
+    app.dependency_overrides[get_phrase_data_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w2_generate?batch_size=3")
+    assert response.status_code == 200
+    mock_service.w2_generate.assert_called_once_with(batch_size=3)

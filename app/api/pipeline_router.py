@@ -5,12 +5,12 @@ from fastapi import APIRouter, Depends, File, Query, UploadFile, status
 
 from app.common.logging import log_decorator
 from app.dependencies.services import (
+    get_phrase_data_service_without_session,
     get_phrase_service_without_session,
-    get_prompt_service,
 )
-from app.pyd.responses import UploadImagesResponse
+from app.pyd.responses import UploadImagesResponse, W2GenerateResponse
+from app.services.phrase_data_service import PhraseDataService
 from app.services.phrase_service import PhraseService
-from app.services.prompt_service import PromptService
 
 router = APIRouter(
     prefix="/pipeline",
@@ -47,7 +47,6 @@ async def w1_upload_images(
     phrase_service: Annotated[
         PhraseService, Depends(get_phrase_service_without_session)
     ],
-    prompt_service: Annotated[PromptService, Depends(get_prompt_service)],
     images: Annotated[list[UploadFile], File()],
     lang: Annotated[Literal["ru", "en"], Query()] = "ru",
 ) -> Any:
@@ -58,7 +57,6 @@ async def w1_upload_images(
 
     :param:
         phrase_service: service responsible for the vision pipeline
-        prompt_service: service that provides the vision prompt
         images: one or more uploaded image files
         lang: target language for extracted phrases ('ru' or 'en')
 
@@ -73,7 +71,31 @@ async def w1_upload_images(
         for image in images:
             await image.close()
 
-    prompt = prompt_service.get("pixtral_vision", lang)
-    return await phrase_service.upload_images(
-        images_raw=images_raw, prompt=prompt, lang=lang
-    )
+    return await phrase_service.upload_images(images_raw=images_raw, lang=lang)
+
+
+@router.post(
+    "/w2_generate",
+    response_model=W2GenerateResponse,
+    status_code=status.HTTP_200_OK,
+)
+@log_decorator(level=logging.INFO)
+async def w2_generate(
+    phrase_data_service: Annotated[
+        PhraseDataService, Depends(get_phrase_data_service_without_session)
+    ],
+    batch_size: Annotated[int, Query(ge=1, le=50)] = 7,
+) -> Any:
+    """Trigger W2: pick a batch of draft phrases and generate tone variants via Mistral
+
+    :role:
+        user
+
+    :param:
+        phrase_data_service: service responsible for variant generation
+        batch_size: number of phrases per Mistral call
+
+    :returns:
+        result: W2GenerateResponse with processed, failed, and skipped counts
+    """
+    return await phrase_data_service.w2_generate(batch_size=batch_size)

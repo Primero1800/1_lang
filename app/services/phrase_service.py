@@ -8,6 +8,7 @@ from app.adapters.ai_client import MistralClient
 from app.common.enums import PhraseStatusEnum
 from app.common.logging import log_decorator, logger
 from app.services.base import BaseService
+from app.services.prompt_service import PromptService
 
 
 class PhraseService(BaseService):
@@ -108,20 +109,22 @@ class PhraseService(BaseService):
             return await uow.phrase_repository.bulk_create(rows)
 
     @log_decorator(level=logging.INFO)
-    async def upload_images(
-        self, images_raw: list[bytes], prompt: str, lang: str
-    ) -> dict[str, int]:
+    async def upload_images(self, images_raw: list[bytes], lang: str) -> dict[str, int]:
         """Run the full vision pipeline: recognise → parse → build → save
 
         :param:
             images_raw: list of raw image bytes from the upload
-            prompt: the vision prompt string
             lang: target language code for the phrases
 
         :returns:
             result: dict with 'phrases_found', 'inserted', and 'skipped' counts
         """
         # 1. Send images to vision model
+        try:
+            prompt = PromptService.get("pixtral_vision", lang)
+        except ValueError as exc:
+            logger.error("No prompt for lang=%s: %s", lang, exc)
+            return {"phrases_found": 0, "inserted": 0, "skipped": 0}
         raw = await self._recognize(images_raw, prompt)
         if not raw:
             return {"phrases_found": 0, "inserted": 0, "skipped": 0}
