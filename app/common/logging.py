@@ -23,9 +23,26 @@ class CustomFormatter(logging.Formatter):
     """Custom log formatter with terminal color support"""
 
     def __init__(self, fmt: str, datefmt: str):
+        """Initialize the formatter
+
+        :param:
+            fmt: log message format string
+            datefmt: date/time format string
+
+        :returns:
+            None
+        """
         super().__init__(fmt, datefmt)
 
     def format(self, record: logging.LogRecord) -> str:
+        """Format a log record with terminal colour codes
+
+        :param:
+            record: the log record to format
+
+        :returns:
+            formatted_message: colour-coded log string
+        """
         level_colors = {
             logging.INFO: GREEN_COLOR,
             logging.DEBUG: YELLOW_COLOR,
@@ -46,6 +63,14 @@ class FileFormatter(logging.Formatter):
     """Log formatter that removes terminal colors for file storage"""
 
     def format(self, record: logging.LogRecord) -> str:
+        """Format a log record with ANSI escape codes stripped
+
+        :param:
+            record: the log record to format
+
+        :returns:
+            formatted_message: plain-text log string without colour codes
+        """
         pattern = r"\033\[\d{1,2}m"
         message = super().format(record)
         return re.sub(pattern, "", message)
@@ -79,7 +104,14 @@ T = TypeVar("T", bound=Awaitable[Any])
 def log_decorator(
     level: int = logging.INFO,
 ) -> Callable[[Callable[..., T]], Callable[..., T]]:
-    """Decorator to log function entry, exit, and execution time"""
+    """Decorate an async function with entry, exit, and execution time logging
+
+    :param:
+        level: logging level to use (default logging.INFO)
+
+    :returns:
+        decorator: the wrapping decorator
+    """
 
     def decorator(func: Callable[..., T]) -> Callable[..., T]:
         @wraps(func)
@@ -120,6 +152,18 @@ def log_decorator(
 
 
 def log_message(message: str, level: int) -> None:
+    """Dispatch a log message at the given level
+
+    :param:
+        message: the message string to log
+        level: one of logging.INFO, DEBUG, WARNING, ERROR
+
+    :raise:
+        ValueError: if the level is not a recognised logging level
+
+    :returns:
+        None
+    """
     if level == logging.INFO:
         logger.info(message)
     elif level == logging.DEBUG:

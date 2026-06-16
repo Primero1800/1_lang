@@ -15,7 +15,16 @@ def external_request_exception_handler(
     raise_exception: Any = ConnectionException,
     is_raise: bool = True,
 ) -> Callable[[T], T]:
-    """Decorator to handle exceptions from external HTTP requests"""
+    """Decorate an async function to handle aiohttp and connection errors uniformly
+
+    :param:
+        fallback: value to return instead of raising when is_raise=False
+        raise_exception: exception class to raise on known HTTP errors
+        is_raise: whether to re-raise handled exceptions or return fallback
+
+    :returns:
+        decorator: the wrapping decorator
+    """
 
     def decorator(func: Any) -> Any:
         @wraps(func)

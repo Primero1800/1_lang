@@ -8,19 +8,44 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.common.logging import logger
 from app.core.database import async_database_session_maker
+from app.repositories.phrase_repository import PhraseRepository
 
 
 class UnitOfWork:
     """Unit of Work for coordinating database transactions"""
 
     def __init__(self, session_factory: Callable[[], AsyncSession]) -> None:
+        """Initialize the UnitOfWork with a session factory
+
+        :param:
+            session_factory: callable that returns a new AsyncSession
+
+        :returns:
+            None
+        """
         self.session_factory = session_factory
 
     async def __aenter__(self) -> Any:
+        """Open a session and initialise repositories
+
+        :returns:
+            self: the UnitOfWork instance with active session and repositories
+        """
         self.session = self.session_factory()
+        self.phrase_repository = PhraseRepository(self.session)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
+        """Commit or rollback the transaction and close the session
+
+        :param:
+            exc_type: exception class if an error occurred, else None
+            exc_val: exception instance if an error occurred, else None
+            exc_tb: traceback object if an error occurred, else None
+
+        :returns:
+            None
+        """
         try:
             if exc_type is not None:
                 await self.rollback()
@@ -56,6 +81,14 @@ class UnitOfWork:
             await self.session.close()
 
     async def _handle_commit_error(self, e: Exception) -> None:
+        """Log a commit failure at the appropriate level based on error type
+
+        :param:
+            e: the exception raised during commit
+
+        :returns:
+            None
+        """
         if isinstance(
             e,
             (
@@ -72,9 +105,19 @@ class UnitOfWork:
             logger.error(f"DB COMMIT FAILED (Unknown): {e}")
 
     async def commit(self) -> None:
+        """Commit the current transaction
+
+        :returns:
+            None
+        """
         await self.session.commit()
 
     async def rollback(self) -> None:
+        """Roll back the current transaction
+
+        :returns:
+            None
+        """
         await self.session.rollback()
 
 

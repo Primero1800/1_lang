@@ -36,6 +36,15 @@ class BaseService(BaseServiceAbstract):
         base_deps: BaseDeps,
         uow: UnitOfWork | None = None,
     ) -> None:
+        """Initialize the service with infrastructure dependencies
+
+        :param:
+            base_deps: container with shared infrastructure clients
+            uow: optional request-scoped UnitOfWork session
+
+        :returns:
+            None
+        """
         self.uow_factory = base_deps.uow_factory
         self.uow = uow
         self.ai_client = base_deps.ai_client
@@ -43,13 +52,33 @@ class BaseService(BaseServiceAbstract):
         self.vector_client = base_deps.vector_client
 
     async def get(self, *args: Any, **kwargs: Any) -> Any:
+        """Retrieve a resource; override in subclass
+
+        :returns:
+            result: the retrieved resource
+        """
         raise NotImplementedError
 
     async def check(self, *args: Any, **kwargs: Any) -> Any:
+        """Perform a check operation; override in subclass
+
+        :returns:
+            result: the check outcome
+        """
         raise NotImplementedError
 
     async def ask(self, *args: Any, **kwargs: Any) -> Any:
+        """Send a query; override in subclass
+
+        :returns:
+            result: the query response
+        """
         raise NotImplementedError
 
     async def generate(self, *args: Any, **kwargs: Any) -> Any:
+        """Generate content; override in subclass
+
+        :returns:
+            result: the generated content
+        """
         raise NotImplementedError

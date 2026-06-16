@@ -17,19 +17,37 @@ from app.core.config import settings
 
 
 class VectorClientAbstract(abc.ABC):
+    """Abstract base class for vector database client implementations"""
+
     @abc.abstractmethod
     async def start(self) -> None:
-        pass
+        """Start the client and ensure the default collection exists
+
+        :returns:
+            None
+        """
 
     @abc.abstractmethod
     async def stop(self) -> None:
-        pass
+        """Stop the client and release any held connections
+
+        :returns:
+            None
+        """
 
     @abc.abstractmethod
     async def collection_exists(
         self, collection_name: str | None = None, raise_exception: bool = False
     ) -> bool:
-        pass
+        """Check whether a collection exists in the vector database
+
+        :param:
+            collection_name: target collection name; defaults to configured collection
+            raise_exception: whether to re-raise exceptions instead of returning False
+
+        :returns:
+            exists: True if the collection exists, False otherwise
+        """
 
     @abc.abstractmethod
     async def create_collection(
@@ -38,7 +56,16 @@ class VectorClientAbstract(abc.ABC):
         vectors_config: VectorParams | None = None,
         raise_exception: bool = False,
     ) -> bool:
-        pass
+        """Create a new collection with the given vector configuration
+
+        :param:
+            collection_name: name for the new collection
+            vectors_config: vector size and distance metric; defaults to configured values
+            raise_exception: whether to re-raise exceptions instead of returning False
+
+        :returns:
+            success: True if the collection was created successfully
+        """
 
     @abc.abstractmethod
     async def upsert(
@@ -47,7 +74,16 @@ class VectorClientAbstract(abc.ABC):
         points: Sequence[PointStruct],
         raise_exception: bool = False,
     ) -> UpdateResult | None:
-        pass
+        """Upsert a sequence of points into a collection
+
+        :param:
+            collection_name: target collection name
+            points: sequence of PointStruct objects to upsert
+            raise_exception: whether to re-raise exceptions instead of returning None
+
+        :returns:
+            result: Qdrant UpdateResult, or None on failure
+        """
 
     @abc.abstractmethod
     async def search(
@@ -59,11 +95,30 @@ class VectorClientAbstract(abc.ABC):
         raise_exception: bool = False,
         with_payload: bool = True,
     ) -> list[ScoredPoint]:
-        pass
+        """Search for nearest neighbours by vector similarity
+
+        :param:
+            query_vector: the query embedding vector
+            collection_name: target collection name; defaults to configured collection
+            query_filter: optional Qdrant filter to narrow results
+            limit: maximum number of results to return
+            raise_exception: whether to re-raise exceptions instead of returning []
+            with_payload: whether to include payload fields in results
+
+        :returns:
+            points: list of ScoredPoint results ordered by similarity
+        """
 
 
 class QdrantVectorClient(VectorClientAbstract):
+    """Qdrant vector database client using the async gRPC/HTTP AsyncQdrantClient"""
+
     def __init__(self) -> None:
+        """Initialize the Qdrant client using settings from the environment
+
+        :returns:
+            None
+        """
         self._client: AsyncQdrantClient = AsyncQdrantClient(
             host=settings.QDRANT_HOST,
             port=settings.QDRANT_PORT,
@@ -75,6 +130,14 @@ class QdrantVectorClient(VectorClientAbstract):
         )
 
     async def start(self) -> None:
+        """Ensure the default collection exists, creating it if necessary
+
+        :raise:
+            Exception: re-raised if collection creation fails unexpectedly
+
+        :returns:
+            None
+        """
         try:
             if not await self.collection_exists(settings.VECTOR_DB_COLLECTION):
                 await self.create_collection(settings.VECTOR_DB_COLLECTION)
@@ -84,6 +147,11 @@ class QdrantVectorClient(VectorClientAbstract):
         logger.debug("Qdrant vector client wrapper ready.")
 
     async def stop(self) -> None:
+        """Close the underlying Qdrant connection pool
+
+        :returns:
+            None
+        """
         await self._client.close()
         logger.debug("Qdrant vector client connection pool closed.")
 
@@ -91,6 +159,15 @@ class QdrantVectorClient(VectorClientAbstract):
     async def collection_exists(
         self, collection_name: str | None = None, raise_exception: bool = False
     ) -> bool:
+        """Check whether a collection exists in Qdrant
+
+        :param:
+            collection_name: target collection name; defaults to configured collection
+            raise_exception: whether to re-raise exceptions instead of returning False
+
+        :returns:
+            exists: True if the collection exists, False otherwise
+        """
         target_collection = collection_name or settings.VECTOR_DB_COLLECTION
         try:
             return await self._client.collection_exists(
@@ -112,6 +189,16 @@ class QdrantVectorClient(VectorClientAbstract):
         vectors_config: VectorParams | None = None,
         raise_exception: bool = False,
     ) -> bool:
+        """Create a new Qdrant collection with cosine distance by default
+
+        :param:
+            collection_name: name for the new collection
+            vectors_config: vector params override; defaults to configured size + cosine
+            raise_exception: whether to re-raise exceptions instead of returning False
+
+        :returns:
+            success: True if collection was created successfully
+        """
         config = vectors_config or VectorParams(
             size=settings.VECTOR_DB_VECTOR_SIZE, distance=Distance.COSINE
         )
@@ -134,6 +221,16 @@ class QdrantVectorClient(VectorClientAbstract):
         points: Sequence[PointStruct],
         raise_exception: bool = False,
     ) -> UpdateResult | None:
+        """Upsert a batch of points into the specified Qdrant collection
+
+        :param:
+            collection_name: target collection name
+            points: sequence of PointStruct objects to upsert
+            raise_exception: whether to re-raise exceptions instead of returning None
+
+        :returns:
+            result: Qdrant UpdateResult, or None on failure
+        """
         try:
             return await self._client.upsert(
                 collection_name=collection_name, points=points
@@ -154,6 +251,19 @@ class QdrantVectorClient(VectorClientAbstract):
         with_payload: bool = True,
         raise_exception: bool = False,
     ) -> list[ScoredPoint]:
+        """Search for nearest neighbours in a Qdrant collection
+
+        :param:
+            query_vector: the query embedding vector
+            collection_name: target collection name; defaults to configured collection
+            query_filter: optional Qdrant filter to narrow results
+            limit: maximum number of results to return
+            with_payload: whether to include payload fields in results
+            raise_exception: whether to re-raise exceptions instead of returning []
+
+        :returns:
+            points: list of ScoredPoint results ordered by similarity
+        """
         try:
             response = await self._client.query_points(
                 collection_name=collection_name or settings.VECTOR_DB_COLLECTION,

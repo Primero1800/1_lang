@@ -13,8 +13,19 @@ from app.services.base import BaseService
 
 
 class TestService(BaseService):
+    """Service for test/debug endpoints: vision, variant generation, and vector search"""
+
     @log_decorator(level=logging.DEBUG)
     async def vision(self, images_raw: list[bytes], prompt: str) -> str | None:
+        """Send images to the Groq vision model and return raw text output
+
+        :param:
+            images_raw: list of raw image bytes
+            prompt: the vision prompt to use
+
+        :returns:
+            raw_text: raw model response string, or None if ai_client2 is not GroqClient
+        """
         images_b64 = [base64.b64encode(img).decode() for img in images_raw]
         if not isinstance(self.ai_client2, GroqClient):
             logger.error("ai_client2 is not GroqClient")
@@ -25,6 +36,16 @@ class TestService(BaseService):
     async def pixtral_vision(
         self, images_raw: list[bytes], prompt: str, count: int = 5
     ) -> list[dict[str, Any]]:
+        """Send images to Pixtral and parse the structured phrase list
+
+        :param:
+            images_raw: list of raw image bytes
+            prompt: the Pixtral vision prompt
+            count: number of phrase variants to request per tag
+
+        :returns:
+            batch: list of phrase dicts (phrase, tag, count), empty on failure
+        """
         if not isinstance(self.ai_client, MistralClient):
             logger.error("ai_client is not MistralClient")
             return []
@@ -36,6 +57,15 @@ class TestService(BaseService):
 
     @staticmethod
     def parse_pixtral_to_batch(raw: str, count: int = 5) -> list[dict[str, Any]]:
+        """Parse raw Pixtral output into a flat deduplicated phrase list
+
+        :param:
+            raw: raw text response from the Pixtral vision model
+            count: variant count to attach to each phrase dict
+
+        :returns:
+            result: deduplicated list of dicts with 'phrase', 'tag', and 'count'
+        """
         import ast
 
         text = raw.strip()
@@ -69,10 +99,22 @@ class TestService(BaseService):
     async def generate_variants(
         self, phrase: str, tag: str, count: int = 5
     ) -> dict[str, list[str]] | None:
+        """Generate mood/gender variants for a single phrase using Groq
+
+        :param:
+            phrase: the observation phrase to generate variants for
+            tag: the observation category tag
+            count: number of variants per mood/gender combination
+
+        :returns:
+            variants: dict of mood → gender → phrase list, or None on failure
+        """
+        # 1. Validate client type
         if not isinstance(self.ai_client2, GroqClient):
             logger.error("ai_client2 is not GroqClient")
             return None
 
+        # 2. Build system instruction and prompt
         system = (
             "Ты генерируешь короткие комментарии о поведении человека на русском языке. "
             "Всегда отвечай строго в формате JSON без дополнительных пояснений."
@@ -97,6 +139,7 @@ class TestService(BaseService):
             f'"D": {{"male": [...], "female": [...]}}, '
             f'"E": {{"male": [...], "female": [...]}}}}'
         )
+        # 3. Call the AI
         raw = await self.ai_client2.generate(
             prompt=prompt,
             system=system,
@@ -105,6 +148,7 @@ class TestService(BaseService):
         if not raw:
             return None
 
+        # 4. Parse JSON response and return mood-keyed dict
         text = raw.strip()
         match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
         if match:
@@ -125,10 +169,21 @@ class TestService(BaseService):
         phrases: list[tuple[str, str]],  # (phrase, tag), up to 8
         count: int = 5,
     ) -> list[dict[str, Any] | None]:
+        """Generate variants for a small chunk of phrases in a single Groq request
+
+        :param:
+            phrases: list of (phrase, tag) tuples, up to 8 items
+            count: number of variants per mood/gender combination
+
+        :returns:
+            results: list of variant dicts (original, tag, variants) or None per phrase
+        """
+        # 1. Validate client type
         if not isinstance(self.ai_client2, GroqClient):
             logger.error("ai_client2 is not GroqClient")
             return [None] * len(phrases)
 
+        # 2. Build numbered items list and prompt
         items = [
             {"id": i, "phrase": phrase, "tag": tag}
             for i, (phrase, tag) in enumerate(phrases)
@@ -156,6 +211,7 @@ class TestService(BaseService):
             f'"D": {{"male": [...], "female": [...]}}, '
             f'"E": {{"male": [...], "female": [...]}}}}, ...]'
         )
+        # 3. Call the AI
         raw = await self.ai_client2.chat(
             messages=[
                 {"role": "system", "content": system},
@@ -165,6 +221,7 @@ class TestService(BaseService):
         if not raw:
             return [None] * len(phrases)
 
+        # 4. Parse JSON response
         text = raw.strip()
         match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
         if match:
@@ -179,6 +236,7 @@ class TestService(BaseService):
             )
             return [None] * len(phrases)
 
+        # 5. Map results back to input phrases by id
         by_id = {item["id"]: item for item in data if "id" in item}
         results: list[dict[str, Any] | None] = []
         for i, (phrase, tag) in enumerate(phrases):
@@ -201,6 +259,17 @@ class TestService(BaseService):
         chunk_size: int = 8,
         sleep_sec: float = 35.0,
     ) -> list[dict[str, Any] | None]:
+        """Process phrases in chunks through _generate_variants_multi with rate-limit sleep
+
+        :param:
+            phrases: full list of (phrase, tag) tuples to process
+            count: number of variants per mood/gender combination
+            chunk_size: number of phrases per Groq request
+            sleep_sec: seconds to sleep between chunks to avoid rate limits
+
+        :returns:
+            results: list of variant dicts or None per input phrase, in order
+        """
         results: list[dict[str, Any] | None] = []
         for i in range(0, len(phrases), chunk_size):
             chunk = phrases[i : i + chunk_size]
@@ -216,10 +285,22 @@ class TestService(BaseService):
     async def generate_variants_mistral(
         self, phrase: str, tag: str, count: int = 5
     ) -> dict[str, Any] | None:
+        """Generate mood/gender variants for a single phrase using Mistral
+
+        :param:
+            phrase: the observation phrase to generate variants for
+            tag: the observation category tag
+            count: number of variants per mood/gender combination
+
+        :returns:
+            variants: dict of mood → gender → phrase list, or None on failure
+        """
+        # 1. Validate client type
         if not isinstance(self.ai_client, MistralClient):
             logger.error("ai_client is not MistralClient")
             return None
 
+        # 2. Build system instruction and prompt
         system = (
             "Ты генерируешь короткие комментарии о поведении человека на русском языке. "
             "Всегда отвечай строго в формате JSON без дополнительных пояснений."
@@ -243,6 +324,7 @@ class TestService(BaseService):
             f'"D": {{"male": [...], "female": [...]}}, '
             f'"E": {{"male": [...], "female": [...]}}}}'
         )
+        # 3. Call the AI
         raw = await self.ai_client.chat(
             messages=[
                 {"role": "system", "content": system},
@@ -254,6 +336,7 @@ class TestService(BaseService):
         if not raw:
             return None
 
+        # 4. Parse JSON response and return mood-keyed dict
         text = raw.strip()
         match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
         if match:
@@ -274,10 +357,21 @@ class TestService(BaseService):
         phrases: list[tuple[str, str]],
         count: int = 5,
     ) -> list[dict[str, Any] | None]:
+        """Generate variants for a small chunk of phrases in a single Mistral request
+
+        :param:
+            phrases: list of (phrase, tag) tuples
+            count: number of variants per mood/gender combination
+
+        :returns:
+            results: list of variant dicts (original, tag, variants) or None per phrase
+        """
+        # 1. Validate client type
         if not isinstance(self.ai_client, MistralClient):
             logger.error("ai_client is not MistralClient")
             return [None] * len(phrases)
 
+        # 2. Build numbered items list and prompt
         items = [
             {"id": i, "phrase": phrase, "tag": tag}
             for i, (phrase, tag) in enumerate(phrases)
@@ -302,6 +396,7 @@ class TestService(BaseService):
             f'"B": {{"male": [...], "female": [...]}}, "C": {{"male": [...], "female": [...]}}, '
             f'"D": {{"male": [...], "female": [...]}}, "E": {{"male": [...], "female": [...]}}}}, ...]}}'
         )
+        # 3. Call the AI
         raw = await self.ai_client.chat(
             messages=[
                 {"role": "system", "content": system},
@@ -313,6 +408,7 @@ class TestService(BaseService):
         if not raw:
             return [None] * len(phrases)
 
+        # 4. Parse JSON response
         text = raw.strip()
         match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
         if match:
@@ -330,6 +426,7 @@ class TestService(BaseService):
             )
             return [None] * len(phrases)
 
+        # 5. Map results back to input phrases by id
         by_id = {item["id"]: item for item in items_out if "id" in item}
         results: list[dict[str, Any] | None] = []
         for i, (phrase, tag) in enumerate(phrases):

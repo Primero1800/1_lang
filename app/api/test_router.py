@@ -97,6 +97,18 @@ async def pixtral_vision(
     test_service: Annotated[TestService, Depends(get_test_service_without_session)],
     images: Annotated[list[UploadFile], File()],
 ) -> Any:
+    """Run Pixtral vision on uploaded images and return structured phrase list
+
+    :role:
+        admin
+
+    :param:
+        test_service: service wrapping the Pixtral vision call
+        images: one or more uploaded image files
+
+    :returns:
+        batch: list of phrase dicts extracted from all images
+    """
     images_raw: list[bytes] = []
     try:
         for image in images:
@@ -118,6 +130,18 @@ async def generate_variants_batch(
     body: list[PhraseVariantsRequest],
     test_service: Annotated[TestService, Depends(get_test_service_without_session)],
 ) -> Any:
+    """Generate mood/gender variants for a batch of phrases using Groq
+
+    :role:
+        admin
+
+    :param:
+        body: list of phrase+tag+count request items
+        test_service: service handling batch variant generation
+
+    :returns:
+        results: list of PhraseVariantsResponse or None per input phrase
+    """
     phrases = [(item.phrase, item.tag) for item in body]
     count = body[0].count if body else 5
     results = await test_service.generate_variants_batch(phrases=phrases, count=count)
@@ -134,6 +158,18 @@ async def generate_variants(
     body: PhraseVariantsRequest,
     test_service: Annotated[TestService, Depends(get_test_service_without_session)],
 ) -> Any:
+    """Generate mood/gender variants for a single phrase using Groq
+
+    :role:
+        admin
+
+    :param:
+        body: phrase, tag, and count request payload
+        test_service: service handling single phrase variant generation
+
+    :returns:
+        response: PhraseVariantsResponse or None if generation failed
+    """
     variants = await test_service.generate_variants(  # type: ignore
         phrase=body.phrase,
         tag=body.tag,
@@ -154,6 +190,18 @@ async def generate_variants_mistral(
     body: PhraseVariantsRequest,
     test_service: Annotated[TestService, Depends(get_test_service_without_session)],
 ) -> PhraseVariantsResponse | None:
+    """Generate mood/gender variants for a single phrase using Mistral
+
+    :role:
+        admin
+
+    :param:
+        body: phrase, tag, and count request payload
+        test_service: service handling Mistral-based variant generation
+
+    :returns:
+        response: PhraseVariantsResponse or None if generation failed
+    """
     variants = await test_service.generate_variants_mistral(
         phrase=body.phrase,
         tag=body.tag,
@@ -174,6 +222,18 @@ async def generate_variants_batch_mistral(
     body: list[PhraseVariantsRequest],
     test_service: Annotated[TestService, Depends(get_test_service_without_session)],
 ) -> Any:
+    """Generate mood/gender variants for a batch of phrases using Mistral
+
+    :role:
+        admin
+
+    :param:
+        body: list of phrase+tag+count request items
+        test_service: service handling Mistral-based batch variant generation
+
+    :returns:
+        results: list of PhraseVariantsResponse or None per input phrase
+    """
     phrases = [(item.phrase, item.tag) for item in body]
     count = body[0].count if body else 5
     return await test_service.generate_variants_batch_mistral(
@@ -192,6 +252,18 @@ async def test(
         BaseServiceAbstract, Depends(get_test_service_without_session)
     ],
 ) -> None:
+    """Embed a query text and search similar vectors in Qdrant
+
+    :role:
+        admin
+
+    :param:
+        text: query string to embed and search
+        test_service: service wrapping vector similarity search
+
+    :returns:
+        results: list of matched vector payloads or None
+    """
     return await test_service.check(text)
 
 
@@ -224,6 +296,18 @@ async def test_vision(
     test_service: Annotated[TestService, Depends(get_test_service_without_session)],
     images: Annotated[list[UploadFile], File()],
 ) -> str | None:
+    """Run raw vision inference on uploaded images and return the model's text output
+
+    :role:
+        admin
+
+    :param:
+        test_service: service wrapping the Groq vision call
+        images: one or more uploaded image files
+
+    :returns:
+        raw_text: raw model response string, or None on failure
+    """
     images_raw: list[bytes] = []
 
     try:

@@ -1,13 +1,16 @@
 from datetime import datetime
 from typing import Annotated
 
-from sqlalchemy import DateTime, text
+from sqlalchemy import BigInteger, DateTime, text
 from sqlalchemy.orm import mapped_column, DeclarativeBase, Mapped
 
 int_pk = Annotated[
     int,
     mapped_column(
-        primary_key=True, autoincrement=True, comment="Уникальный идентификатор"
+        BigInteger,
+        primary_key=True,
+        autoincrement=True,
+        comment="Уникальный идентификатор",
     ),
 ]
 

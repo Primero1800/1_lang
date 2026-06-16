@@ -3,6 +3,7 @@ import logging
 from fastapi import APIRouter, status
 
 from app.api.health_check import router as healthcheck_router
+from app.api.pipeline_router import router as pipeline_router
 from app.api.test_router import router as test_router
 
 
@@ -19,9 +20,17 @@ router = APIRouter()
 )
 @log_decorator(logging.INFO)
 async def get_version() -> str:
-    """Retrieve application name and version"""
+    """Retrieve application name and version
+
+    :role:
+        public
+
+    :returns:
+        version_string: formatted application name and version
+    """
     return f"{settings.APP_NAME}, v{settings.APP_VERSION}"
 
 
 router.include_router(healthcheck_router)
 router.include_router(test_router)
+router.include_router(pipeline_router)
