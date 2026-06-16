@@ -1,5 +1,5 @@
 from sqlalchemy import String, UniqueConstraint, text
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.enums import LangEnum, PhraseStatusEnum, TagEnum
 from app.models.base import Base, int_pk
@@ -32,4 +32,9 @@ class Phrase(Base):
         default=PhraseStatusEnum.DRAFT,
         server_default=text(f"'{PhraseStatusEnum.DRAFT.value}'"),
         comment="Статус обработки",
+    )
+
+    phrase_data: Mapped["PhraseData"] = relationship(  # noqa: F821
+        back_populates="phrase",
+        cascade="all, delete-orphan",
     )
