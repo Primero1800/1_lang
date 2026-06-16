@@ -1,13 +1,15 @@
 from sqlalchemy import BigInteger, ForeignKey
 from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import Mapped, mapped_column
+from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.models.base import Base, int_pk
 
 
 class PhraseData(Base):
     __tablename__ = "phrase_data"
-    __table_args__ = {"comment": "Варианты фраз по настроению и полу, staging перед загрузкой в Qdrant"}
+    __table_args__ = {
+        "comment": "Варианты фраз по настроению и полу, staging перед загрузкой в Qdrant"
+    }
 
     id: Mapped[int_pk]
     phrase_id: Mapped[int] = mapped_column(
@@ -20,3 +22,5 @@ class PhraseData(Base):
         JSONB,
         comment='Варианты по настроению: {"A": {"male": [...5...], "female": [...5...]}, ...}',
     )
+
+    phrase: Mapped["Phrase"] = relationship(back_populates="phrase_data")  # noqa: F821
