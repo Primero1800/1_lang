@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     VECTOR_DB_COLLECTION: str
     VECTOR_DB_VECTOR_SIZE: int = 1024
 
+    STUCK_THRESHOLD: int = 10
+
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
     )

@@ -94,9 +94,7 @@ async def test_upload_images_recognize_none(
     phrase_service: PhraseService, mocker
 ) -> None:
     mocker.patch.object(phrase_service, "_recognize", new=AsyncMock(return_value=None))
-    result = await phrase_service.upload_images(
-        images_raw=[b"img"], prompt="p", lang="ru"
-    )
+    result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
     assert result == {"phrases_found": 0, "inserted": 0, "skipped": 0}
 
 
@@ -110,9 +108,7 @@ async def test_upload_images_empty_parsed(
     mocker.patch.object(
         phrase_service, "_parse_pixtral_response", new=AsyncMock(return_value=[])
     )
-    result = await phrase_service.upload_images(
-        images_raw=[b"img"], prompt="p", lang="ru"
-    )
+    result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
     assert result == {"phrases_found": 0, "inserted": 0, "skipped": 0}
 
 
@@ -127,9 +123,7 @@ async def test_upload_images_empty_rows(phrase_service: PhraseService, mocker) -
         new=AsyncMock(return_value=[{"phrase": "x", "tag": "y"}]),
     )
     mocker.patch.object(phrase_service, "_build_rows", new=AsyncMock(return_value=[]))
-    result = await phrase_service.upload_images(
-        images_raw=[b"img"], prompt="p", lang="ru"
-    )
+    result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
     assert result == {"phrases_found": 0, "inserted": 0, "skipped": 0}
 
 
@@ -148,7 +142,5 @@ async def test_upload_images_success(phrase_service: PhraseService, mocker) -> N
     )
     mocker.patch.object(phrase_service, "_build_rows", new=AsyncMock(return_value=rows))
     mocker.patch.object(phrase_service, "_save_phrases", new=AsyncMock(return_value=2))
-    result = await phrase_service.upload_images(
-        images_raw=[b"img"], prompt="p", lang="ru"
-    )
+    result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
     assert result == {"phrases_found": 3, "inserted": 2, "skipped": 1}

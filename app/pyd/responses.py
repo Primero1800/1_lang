@@ -33,3 +33,11 @@ class UploadImagesResponse(BaseModel):
     phrases_found: int
     inserted: int
     skipped: int
+
+
+class W2GenerateResponse(BaseModel):
+    """Response summarising the result of a W2 variant generation batch"""
+
+    processed: int
+    failed: int
+    skipped: int

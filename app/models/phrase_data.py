@@ -23,4 +23,4 @@ class PhraseData(Base):
         comment='Варианты по настроению: {"A": {"male": [...5...], "female": [...5...]}, ...}',
     )
 
-    phrase: Mapped["Phrase"] = relationship(back_populates="phrase_data")  # noqa: F821
+    phrase: Mapped["Phrase"] = relationship(back_populates="phrase_data")  # type: ignore[name-defined]  # noqa: F821

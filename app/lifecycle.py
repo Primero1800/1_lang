@@ -3,7 +3,7 @@ from fastapi import FastAPI
 
 from app.adapters.vector_client import VectorClientAbstract
 from app.common.logging import logger
-from app.core.database import initialize_db
+from app.core.database import initialize_db, shutdown_db
 from app.dependencies.infrastructure import get_aiohttp_session, get_vector_client
 
 
@@ -48,6 +48,7 @@ class AppLifecycle:
             await self.aiohttp_session.close()
         if self.vector_client:
             await self.vector_client.stop()
+        await shutdown_db()
         logger.info("Shutting down the APP")
 
     async def _initialize_core(self) -> None:
