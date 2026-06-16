@@ -23,7 +23,12 @@ from langchain_text_splitters import RecursiveCharacterTextSplitter
 
 @log_decorator(level=logging.INFO)
 async def read_starting_json():
+    """Read messages from govor.json, embed them, and upsert into Qdrant
 
+    :returns:
+        None on success, False if embedding creation fails
+    """
+    # 1. Set up aiohttp session, AI client, and text splitter
     time_started = time.time()
     logger.info(f"Script 'Read_starting_json' started: {time_started}")
 
@@ -35,6 +40,7 @@ async def read_starting_json():
         separators=["\n\n", "\n", ".", "!", "?", ";", ":", ",", " "],
     )
 
+    # 2. Read JSON and split messages into chunks
     data_path = Path(__file__).resolve().parent.parent.parent / "data" / "govor.json"
     points_raw, points = [], []
     with open(data_path) as file:
@@ -71,6 +77,7 @@ async def read_starting_json():
                         }
                     )
 
+    # 3. Create embeddings for all chunks
     to_embed = [item["vector"] for item in points_raw]
     logger.info(
         f"Making request for embedding creating... Wait please... {len(to_embed)} entities processing"
@@ -80,6 +87,7 @@ async def read_starting_json():
         logger.info(
             f"Embedding created successfully: {len(embeddings)} embeddings total"
         )
+        # 4. Build PointStructs from embeddings and raw metadata
         logger.info("Adding new PointStruct for vector_client")
         for embedding, raw_point in zip(embeddings, points_raw):
             points.append(
@@ -94,6 +102,7 @@ async def read_starting_json():
         logger.error("Embedding creating failed")
         return False
 
+    # 5. Initialize vector client and upsert all points into Qdrant
     logger.info("Starting Vector database upserting....")
     vector_client = await get_vector_client()
     await vector_client.start()
