@@ -449,6 +449,17 @@ class TestService(BaseService):
         chunk_size: int = 10,
         sleep_sec: float = 30.0,
     ) -> list[dict[str, Any] | None]:
+        """Process phrases in chunks through _generate_variants_multi_mistral with rate-limit sleep
+
+        :param:
+            phrases: full list of (phrase, tag) tuples to process
+            count: number of variants per mood/gender combination
+            chunk_size: number of phrases per Mistral request
+            sleep_sec: seconds to sleep between chunks to avoid rate limits
+
+        :returns:
+            results: list of variant dicts or None per input phrase, in order
+        """
         results: list[dict[str, Any] | None] = []
         for i in range(0, len(phrases), chunk_size):
             chunk = phrases[i : i + chunk_size]
@@ -462,11 +473,22 @@ class TestService(BaseService):
 
     @log_decorator(level=logging.DEBUG)
     async def check(self, text: str) -> Any:
+        """Embed a text query and search the vector DB for nearest neighbours
+
+        :param:
+            text: the query text to embed and search
+
+        :returns:
+            results: list of scored payload dicts (score, message_id, chunk_id, total_chunks, text),
+                     None if embedding failed, False on search error
+        """
+        # 1. Embed the query text
         text_embedding = await self.ai_client.embed(text, task_type="query")
         if not text_embedding:
             return None
 
         try:
+            # 2. Search the vector DB
             points = await self.vector_client.search(
                 query_vector=text_embedding,
                 raise_exception=True,
@@ -474,8 +496,10 @@ class TestService(BaseService):
                 with_payload=True,
             )
 
+            # 3. Log raw results
             logger.info(points)
 
+            # 4. Build result list from scored points
             res = []
             for point in points:
                 temp = {
