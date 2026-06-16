@@ -9,7 +9,11 @@ from app.dependencies.services import (
     get_phrase_service_without_session,
     get_phrase_translation_service_without_session,
 )
-from app.pyd.responses import UploadImagesResponse, W2GenerateResponse, W3TranslateResponse
+from app.pyd.responses import (
+    UploadImagesResponse,
+    W2GenerateResponse,
+    W3TranslateResponse,
+)
 from app.services.phrase_data_service import PhraseDataService
 from app.services.phrase_service import PhraseService
 from app.services.phrase_translation_service import PhraseTranslationService
@@ -111,7 +115,8 @@ async def w2_generate(
 @log_decorator(level=logging.INFO)
 async def w3_translate(
     phrase_translation_service: Annotated[
-        PhraseTranslationService, Depends(get_phrase_translation_service_without_session)
+        PhraseTranslationService,
+        Depends(get_phrase_translation_service_without_session),
     ],
     batch_size: Annotated[int, Query(ge=1, le=50)] = 7,
 ) -> Any:

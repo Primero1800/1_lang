@@ -13,10 +13,10 @@ async def db_session(test_session_maker, empty_db) -> AsyncSession:
 
 
 @pytest.mark.asyncio
-async def test_bulk_create_empty_list_returns_zero(db_session: AsyncSession) -> None:
+async def test_bulk_create_empty_list_returns_empty(db_session: AsyncSession) -> None:
     repo = PhraseRepository(db_session)
     result = await repo.bulk_create([])
-    assert result == 0
+    assert result == []
 
 
 @pytest.mark.asyncio
@@ -37,7 +37,8 @@ async def test_bulk_create_inserts_rows(db_session: AsyncSession) -> None:
         },
     ]
     result = await repo.bulk_create(rows)
-    assert result == 2
+    assert len(result) == 2
+    assert all(isinstance(i, int) for i in result)
 
 
 @pytest.mark.asyncio
@@ -61,4 +62,4 @@ async def test_bulk_create_on_conflict_skips_duplicate(
     async with test_session_maker() as session:
         repo = PhraseRepository(session)
         result = await repo.bulk_create(rows)
-        assert result == 0
+        assert result == []

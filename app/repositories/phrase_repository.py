@@ -59,7 +59,8 @@ class PhraseRepository(BaseRepository):
         """
         stuck = and_(
             Phrase.status == in_progress_status,
-            Phrase.updated_at < func.now() - timedelta(minutes=settings.STUCK_THRESHOLD),
+            Phrase.updated_at
+            < func.now() - timedelta(minutes=settings.STUCK_THRESHOLD),
         )
         stmt = (
             select(Phrase)
@@ -108,7 +109,8 @@ class PhraseRepository(BaseRepository):
         """
         stuck = and_(
             Phrase.status == in_progress_status,
-            Phrase.updated_at < func.now() - timedelta(minutes=settings.STUCK_THRESHOLD),
+            Phrase.updated_at
+            < func.now() - timedelta(minutes=settings.STUCK_THRESHOLD),
         )
         stmt = (
             select(Phrase)
