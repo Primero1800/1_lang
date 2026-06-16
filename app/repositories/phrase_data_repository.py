@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.common.logging import log_decorator
@@ -37,3 +37,19 @@ class PhraseDataRepository(BaseRepository):
             )
         )
         await self._session.execute(stmt)
+
+    @log_decorator(level=logging.DEBUG)
+    async def get_by_phrase_ids(self, phrase_ids: list[int]) -> list[PhraseData]:
+        """Return PhraseData records for the given phrase IDs
+
+        :param:
+            phrase_ids: list of phrase IDs to fetch variants for
+
+        :returns:
+            records: list of PhraseData objects
+        """
+        if not phrase_ids:
+            return []
+        stmt = select(PhraseData).where(PhraseData.phrase_id.in_(phrase_ids))
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())

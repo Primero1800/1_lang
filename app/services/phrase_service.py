@@ -106,7 +106,8 @@ class PhraseService(BaseService):
             inserted_count: number of rows actually inserted
         """
         async with self.uow_factory as uow:
-            return await uow.phrase_repository.bulk_create(rows)
+            ids = await uow.phrase_repository.bulk_create(rows)
+            return len(ids)
 
     @log_decorator(level=logging.INFO)
     async def upload_images(self, images_raw: list[bytes], lang: str) -> dict[str, int]:

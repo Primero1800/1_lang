@@ -5,6 +5,7 @@ import aiohttp
 from pydantic import ValidationError
 
 from app.adapters.ai_client import MistralClient
+from app.common.enums import PhraseStatusEnum
 from app.common.logging import log_decorator, logger
 from app.models.phrases import Phrase
 from app.pyd.ai_schemas import W2MistralResponse
@@ -27,15 +28,24 @@ class PhraseDataService(BaseService):
         """
         async with self.uow_factory as uow:
             # 1. Pick the highest-priority phrase (DRAFT / FAILED / stuck)
-            first = await uow.phrase_repository.get_first_for_generation()
+            first = await uow.phrase_repository.get_first_for_processing(
+                in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
+                priority_status=PhraseStatusEnum.GENERATING_FAILED,
+                base_statuses=[PhraseStatusEnum.DRAFT],
+            )
             if not first:
                 return []
             logger.info(
                 f"[W2, generating] First chosen: id={first.id}, lang={first.lang}, status={first.status}"
             )
             # 2. Fill the rest of the batch with same-lang phrases
-            rest = await uow.phrase_repository.get_batch_for_generation(
-                lang=first.lang, exclude_id=first.id, limit=batch_size - 1
+            rest = await uow.phrase_repository.get_batch_for_processing(
+                in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
+                priority_status=PhraseStatusEnum.GENERATING_FAILED,
+                base_statuses=[PhraseStatusEnum.DRAFT],
+                lang=first.lang,
+                exclude_id=first.id,
+                limit=batch_size - 1,
             )
             batch = [first, *rest]
             for i, member in enumerate(batch, start=1):
@@ -43,8 +53,9 @@ class PhraseDataService(BaseService):
                     f"[W2, generating] {i}st chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
             # 3. Mark all claimed phrases as in-progress (SKIP LOCKED prevents duplicates)
-            await uow.phrase_repository.mark_generating_in_progress(
-                ids=[p.id for p in batch]
+            await uow.phrase_repository.update_status(
+                ids=[p.id for p in batch],
+                status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
             )
         return batch
 
@@ -142,10 +153,14 @@ class PhraseDataService(BaseService):
                 await uow.phrase_data_repository.bulk_upsert_variants(rows)
             if returned_ids:
                 logger.info(f"[W2, generating]: returned ids {returned_ids}")
-                await uow.phrase_repository.mark_generating_done(ids=list(returned_ids))
+                await uow.phrase_repository.update_status(
+                    ids=list(returned_ids), status=PhraseStatusEnum.GENERATING_DONE
+                )
             if failed_ids:
                 logger.info(f"[W2, generating]: failed ids {failed_ids}")
-                await uow.phrase_repository.mark_generating_failed(ids=list(failed_ids))
+                await uow.phrase_repository.update_status(
+                    ids=list(failed_ids), status=PhraseStatusEnum.GENERATING_FAILED
+                )
 
         return {
             "processed": len(returned_ids),
