@@ -7,10 +7,12 @@ from app.common.logging import log_decorator
 from app.dependencies.services import (
     get_phrase_data_service_without_session,
     get_phrase_service_without_session,
+    get_phrase_translation_service_without_session,
 )
-from app.pyd.responses import UploadImagesResponse, W2GenerateResponse
+from app.pyd.responses import UploadImagesResponse, W2GenerateResponse, W3TranslateResponse
 from app.services.phrase_data_service import PhraseDataService
 from app.services.phrase_service import PhraseService
+from app.services.phrase_translation_service import PhraseTranslationService
 
 router = APIRouter(
     prefix="/pipeline",
@@ -99,3 +101,30 @@ async def w2_generate(
         result: W2GenerateResponse with processed, failed, and skipped counts
     """
     return await phrase_data_service.w2_generate(batch_size=batch_size)
+
+
+@router.post(
+    "/w3_translate",
+    response_model=W3TranslateResponse,
+    status_code=status.HTTP_200_OK,
+)
+@log_decorator(level=logging.INFO)
+async def w3_translate(
+    phrase_translation_service: Annotated[
+        PhraseTranslationService, Depends(get_phrase_translation_service_without_session)
+    ],
+    batch_size: Annotated[int, Query(ge=1, le=50)] = 7,
+) -> Any:
+    """Trigger W3: translate a batch of generated phrases and their variants via Mistral
+
+    :role:
+        user
+
+    :param:
+        phrase_translation_service: service responsible for translation
+        batch_size: number of phrases per Mistral call
+
+    :returns:
+        result: W3TranslateResponse with processed, failed, and skipped counts
+    """
+    return await phrase_translation_service.w3_translate(batch_size=batch_size)
