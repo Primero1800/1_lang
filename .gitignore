@@ -233,3 +233,5 @@ __pycache__/
 *.pyc
 app/logs/*.log.*
 *.dockerignore
+*.md
+!README.md
