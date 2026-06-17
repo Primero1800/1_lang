@@ -1,16 +1,23 @@
 import logging
 from typing import Annotated, Any, Literal
 
-from fastapi import APIRouter, Depends, File, Query, UploadFile, status
+from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
+from app.common.exceptions import IntegrityDataException
 from app.common.logging import log_decorator
 from app.dependencies.services import (
     get_phrase_data_service_without_session,
     get_phrase_service_without_session,
+    get_phrase_translation_service_without_session,
 )
-from app.pyd.responses import UploadImagesResponse, W2GenerateResponse
+from app.pyd.responses import (
+    UploadImagesResponse,
+    W2GenerateResponse,
+    W3TranslateResponse,
+)
 from app.services.phrase_data_service import PhraseDataService
 from app.services.phrase_service import PhraseService
+from app.services.phrase_translation_service import PhraseTranslationService
 
 router = APIRouter(
     prefix="/pipeline",
@@ -71,7 +78,13 @@ async def w1_upload_images(
         for image in images:
             await image.close()
 
-    return await phrase_service.upload_images(images_raw=images_raw, lang=lang)
+    try:
+        return await phrase_service.upload_images(images_raw=images_raw, lang=lang)
+    except IntegrityDataException as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Integrity constraint violation during phrase upload",
+        ) from e
 
 
 @router.post(
@@ -84,7 +97,7 @@ async def w2_generate(
     phrase_data_service: Annotated[
         PhraseDataService, Depends(get_phrase_data_service_without_session)
     ],
-    batch_size: Annotated[int, Query(ge=1, le=50)] = 7,
+    batch_size: Annotated[int, Query(ge=1, le=50)] = 5,
 ) -> Any:
     """Trigger W2: pick a batch of draft phrases and generate tone variants via Mistral
 
@@ -98,4 +111,44 @@ async def w2_generate(
     :returns:
         result: W2GenerateResponse with processed, failed, and skipped counts
     """
-    return await phrase_data_service.w2_generate(batch_size=batch_size)
+    try:
+        return await phrase_data_service.w2_generate(batch_size=batch_size)
+    except IntegrityDataException as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Integrity constraint violation during variant generation",
+        ) from e
+
+
+@router.post(
+    "/w3_translate",
+    response_model=W3TranslateResponse,
+    status_code=status.HTTP_200_OK,
+)
+@log_decorator(level=logging.INFO)
+async def w3_translate(
+    phrase_translation_service: Annotated[
+        PhraseTranslationService,
+        Depends(get_phrase_translation_service_without_session),
+    ],
+    batch_size: Annotated[int, Query(ge=1, le=50)] = 5,
+) -> Any:
+    """Trigger W3: translate a batch of generated phrases and their variants via Mistral
+
+    :role:
+        user
+
+    :param:
+        phrase_translation_service: service responsible for translation
+        batch_size: number of phrases per Mistral call
+
+    :returns:
+        result: W3TranslateResponse with processed, failed, and skipped counts
+    """
+    try:
+        return await phrase_translation_service.w3_translate(batch_size=batch_size)
+    except IntegrityDataException as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Integrity constraint violation during translation",
+        ) from e

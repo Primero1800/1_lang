@@ -13,10 +13,10 @@ async def db_session(test_session_maker, empty_db) -> AsyncSession:
 
 
 @pytest.mark.asyncio
-async def test_bulk_create_empty_list_returns_zero(db_session: AsyncSession) -> None:
+async def test_bulk_create_empty_list_returns_empty(db_session: AsyncSession) -> None:
     repo = PhraseRepository(db_session)
     result = await repo.bulk_create([])
-    assert result == 0
+    assert result == []
 
 
 @pytest.mark.asyncio
@@ -37,7 +37,8 @@ async def test_bulk_create_inserts_rows(db_session: AsyncSession) -> None:
         },
     ]
     result = await repo.bulk_create(rows)
-    assert result == 2
+    assert len(result) == 2
+    assert all(isinstance(i, int) for i in result)
 
 
 @pytest.mark.asyncio
@@ -61,4 +62,49 @@ async def test_bulk_create_on_conflict_skips_duplicate(
     async with test_session_maker() as session:
         repo = PhraseRepository(session)
         result = await repo.bulk_create(rows)
-        assert result == 0
+        assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_ids_by_originals_returns_mapping(db_session: AsyncSession) -> None:
+    repo = PhraseRepository(db_session)
+    rows = [
+        {
+            "original": "alpha phrase",
+            "tag": "behavior",
+            "lang": "en",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+        {
+            "original": "beta phrase",
+            "tag": "appearance",
+            "lang": "en",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+    ]
+    await repo.bulk_create(rows)
+    await db_session.commit()
+
+    result = await repo.get_ids_by_originals(
+        originals=["alpha phrase", "beta phrase"], lang="en"
+    )
+    assert set(result.keys()) == {"alpha phrase", "beta phrase"}
+    assert all(isinstance(v, int) for v in result.values())
+
+
+@pytest.mark.asyncio
+async def test_get_ids_by_originals_filters_by_lang(db_session: AsyncSession) -> None:
+    repo = PhraseRepository(db_session)
+    rows = [
+        {
+            "original": "gamma phrase",
+            "tag": "behavior",
+            "lang": "ru",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+    ]
+    await repo.bulk_create(rows)
+    await db_session.commit()
+
+    result = await repo.get_ids_by_originals(originals=["gamma phrase"], lang="en")
+    assert result == {}

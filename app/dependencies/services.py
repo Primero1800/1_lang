@@ -13,6 +13,7 @@ from app.services.base import BaseDeps, BaseService
 from app.services.health_check_service import HealthCheckService
 from app.services.phrase_data_service import PhraseDataService
 from app.services.phrase_service import PhraseService
+from app.services.phrase_translation_service import PhraseTranslationService
 from app.services.test_service import TestService
 from app.uow import UnitOfWork, get_uow_factory, get_uow
 
@@ -92,4 +93,8 @@ get_phrase_service_without_session = _create_service_without_session(PhraseServi
 
 get_phrase_data_service_without_session = _create_service_without_session(
     PhraseDataService
+)
+
+get_phrase_translation_service_without_session = _create_service_without_session(
+    PhraseTranslationService
 )

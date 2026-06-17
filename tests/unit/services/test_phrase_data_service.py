@@ -96,7 +96,7 @@ async def test_w2_generate_mistral_none_all_failed(
     result = await phrase_data_service.w2_generate(batch_size=7)
     assert result == {"processed": 0, "failed": 2, "skipped": 0}
     mock_uow.phrase_data_repository.bulk_upsert_variants.assert_not_called()
-    mock_uow.phrase_repository.mark_generating_failed.assert_called_once()
+    mock_uow.phrase_repository.update_status.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -122,8 +122,7 @@ async def test_w2_generate_success(
     result = await phrase_data_service.w2_generate(batch_size=7)
     assert result == {"processed": 2, "failed": 0, "skipped": 0}
     mock_uow.phrase_data_repository.bulk_upsert_variants.assert_called_once()
-    mock_uow.phrase_repository.mark_generating_done.assert_called_once()
-    mock_uow.phrase_repository.mark_generating_failed.assert_not_called()
+    mock_uow.phrase_repository.update_status.assert_called_once()
 
 
 @pytest.mark.asyncio
@@ -148,5 +147,4 @@ async def test_w2_generate_partial_match(
 
     result = await phrase_data_service.w2_generate(batch_size=7)
     assert result == {"processed": 1, "failed": 2, "skipped": 0}
-    mock_uow.phrase_repository.mark_generating_done.assert_called_once()
-    mock_uow.phrase_repository.mark_generating_failed.assert_called_once()
+    assert mock_uow.phrase_repository.update_status.call_count == 2

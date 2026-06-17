@@ -276,7 +276,8 @@ class QdrantVectorClient(VectorClientAbstract):
             return response.points
         except Exception as exc:
             logger.error(
-                f"Error during vector search in '{collection_name}'", exc_info=exc
+                f"Error during vector search in '{collection_name or settings.VECTOR_DB_COLLECTION}'",
+                exc_info=exc,
             )
             if raise_exception:
                 raise

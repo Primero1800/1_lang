@@ -6,6 +6,8 @@ from app.models.base import Base, int_pk
 
 
 class Phrase(Base):
+    """Vision-extracted observation phrase with language, tag, pipeline status, and tone variants"""
+
     __tablename__ = "phrases"
     __table_args__ = (
         UniqueConstraint("original", "lang", name="uq_phrases_original_lang"),

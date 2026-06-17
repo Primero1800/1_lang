@@ -1,13 +1,13 @@
 import json
 import logging
+from typing import Any
 
-import aiohttp
 from pydantic import ValidationError
 
-from app.adapters.ai_client import MistralClient
+from app.common.enums import LangEnum, PhraseStatusEnum
 from app.common.logging import log_decorator, logger
 from app.models.phrases import Phrase
-from app.pyd.ai_schemas import W2MistralResponse
+from app.pyd.ai_schemas import MistralResponse, PhraseVariants
 from app.services.base import BaseService
 from app.services.prompt_service import PromptService
 
@@ -27,15 +27,24 @@ class PhraseDataService(BaseService):
         """
         async with self.uow_factory as uow:
             # 1. Pick the highest-priority phrase (DRAFT / FAILED / stuck)
-            first = await uow.phrase_repository.get_first_for_generation()
+            first = await uow.phrase_repository.get_first_for_processing(
+                in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
+                priority_status=PhraseStatusEnum.GENERATING_FAILED,
+                base_statuses=[PhraseStatusEnum.DRAFT],
+            )
             if not first:
                 return []
             logger.info(
                 f"[W2, generating] First chosen: id={first.id}, lang={first.lang}, status={first.status}"
             )
             # 2. Fill the rest of the batch with same-lang phrases
-            rest = await uow.phrase_repository.get_batch_for_generation(
-                lang=first.lang, exclude_id=first.id, limit=batch_size - 1
+            rest = await uow.phrase_repository.get_batch_for_processing(
+                in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
+                priority_status=PhraseStatusEnum.GENERATING_FAILED,
+                base_statuses=[PhraseStatusEnum.DRAFT],
+                lang=first.lang,
+                exclude_id=first.id,
+                limit=batch_size - 1,
             )
             batch = [first, *rest]
             for i, member in enumerate(batch, start=1):
@@ -43,8 +52,9 @@ class PhraseDataService(BaseService):
                     f"[W2, generating] {i}st chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
             # 3. Mark all claimed phrases as in-progress (SKIP LOCKED prevents duplicates)
-            await uow.phrase_repository.mark_generating_in_progress(
-                ids=[p.id for p in batch]
+            await uow.phrase_repository.update_status(
+                ids=[p.id for p in batch],
+                status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
             )
         return batch
 
@@ -59,8 +69,8 @@ class PhraseDataService(BaseService):
         :returns:
             raw: raw JSON string from Mistral, or None on failure
         """
-        if not isinstance(self.ai_client, MistralClient):
-            logger.error("ai_client is not MistralClient")
+        if not self.ai_client.supports_chat:
+            logger.error("ai_client does not support chat")
             return None
         try:
             system = PromptService.get("mistral_variants", lang)
@@ -77,10 +87,9 @@ class PhraseDataService(BaseService):
                 {"role": "user", "content": payload},
             ],
             options={"response_format": {"type": "json_object"}},
-            timeout=aiohttp.ClientTimeout(total=60),
         )
 
-    def _parse_w2_response(self, raw: str) -> dict[int, dict]:
+    def _parse_w2_response(self, raw: str) -> dict[int, dict[str, Any]]:
         """Validate and parse the Mistral JSON response into a phrase_id → variants mapping
 
         :param:
@@ -90,7 +99,7 @@ class PhraseDataService(BaseService):
             matched: dict of phrase_id → tone variants dict (empty on validation error)
         """
         try:
-            data = W2MistralResponse.model_validate_json(raw)
+            data = MistralResponse[PhraseVariants].model_validate_json(raw)
         except ValidationError as exc:
             logger.error("Failed to validate w2 response: %s", exc)
             return {}
@@ -122,7 +131,9 @@ class PhraseDataService(BaseService):
 
         sent_ids = {p.id for p in batch}
         lang_raw = batch[0].lang
-        actual_lang = lang_raw.value if hasattr(lang_raw, "value") else str(lang_raw)
+        actual_lang = (
+            lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)
+        )
 
         # 2. Call Mistral for all phrases in one request
         raw = await self._call_mistral(batch, actual_lang)
@@ -142,10 +153,14 @@ class PhraseDataService(BaseService):
                 await uow.phrase_data_repository.bulk_upsert_variants(rows)
             if returned_ids:
                 logger.info(f"[W2, generating]: returned ids {returned_ids}")
-                await uow.phrase_repository.mark_generating_done(ids=list(returned_ids))
+                await uow.phrase_repository.update_status(
+                    ids=list(returned_ids), status=PhraseStatusEnum.GENERATING_DONE
+                )
             if failed_ids:
                 logger.info(f"[W2, generating]: failed ids {failed_ids}")
-                await uow.phrase_repository.mark_generating_failed(ids=list(failed_ids))
+                await uow.phrase_repository.update_status(
+                    ids=list(failed_ids), status=PhraseStatusEnum.GENERATING_FAILED
+                )
 
         return {
             "processed": len(returned_ids),

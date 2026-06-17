@@ -41,3 +41,11 @@ class W2GenerateResponse(BaseModel):
     processed: int
     failed: int
     skipped: int
+
+
+class W3TranslateResponse(BaseModel):
+    """Response summarising the result of a W3 translation batch"""
+
+    processed: int
+    failed: int
+    skipped: int
