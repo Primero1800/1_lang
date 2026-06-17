@@ -25,16 +25,13 @@ class PhraseDataRepository(BaseRepository):
         """
         if not rows:
             return
-        stmt = (
-            pg_insert(PhraseData)
-            .values(rows)
-            .on_conflict_do_update(
-                index_elements=["phrase_id"],
-                set_={
-                    "variants": pg_insert(PhraseData).excluded.variants,
-                    "updated_at": func.now(),
-                },
-            )
+        insert_stmt = pg_insert(PhraseData).values(rows)
+        stmt = insert_stmt.on_conflict_do_update(
+            index_elements=["phrase_id"],
+            set_={
+                "variants": insert_stmt.excluded.variants,
+                "updated_at": func.now(),
+            },
         )
         await self._session.execute(stmt)
 

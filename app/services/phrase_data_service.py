@@ -1,14 +1,13 @@
 import json
 import logging
+from typing import Any
 
-import aiohttp
 from pydantic import ValidationError
 
-from app.adapters.ai_client import MistralClient
-from app.common.enums import PhraseStatusEnum
+from app.common.enums import LangEnum, PhraseStatusEnum
 from app.common.logging import log_decorator, logger
 from app.models.phrases import Phrase
-from app.pyd.ai_schemas import W2MistralResponse
+from app.pyd.ai_schemas import MistralResponse, PhraseVariants
 from app.services.base import BaseService
 from app.services.prompt_service import PromptService
 
@@ -70,8 +69,8 @@ class PhraseDataService(BaseService):
         :returns:
             raw: raw JSON string from Mistral, or None on failure
         """
-        if not isinstance(self.ai_client, MistralClient):
-            logger.error("ai_client is not MistralClient")
+        if not self.ai_client.supports_chat:
+            logger.error("ai_client does not support chat")
             return None
         try:
             system = PromptService.get("mistral_variants", lang)
@@ -88,10 +87,9 @@ class PhraseDataService(BaseService):
                 {"role": "user", "content": payload},
             ],
             options={"response_format": {"type": "json_object"}},
-            timeout=aiohttp.ClientTimeout(total=60),
         )
 
-    def _parse_w2_response(self, raw: str) -> dict[int, dict]:
+    def _parse_w2_response(self, raw: str) -> dict[int, dict[str, Any]]:
         """Validate and parse the Mistral JSON response into a phrase_id → variants mapping
 
         :param:
@@ -101,7 +99,7 @@ class PhraseDataService(BaseService):
             matched: dict of phrase_id → tone variants dict (empty on validation error)
         """
         try:
-            data = W2MistralResponse.model_validate_json(raw)
+            data = MistralResponse[PhraseVariants].model_validate_json(raw)
         except ValidationError as exc:
             logger.error("Failed to validate w2 response: %s", exc)
             return {}
@@ -133,7 +131,9 @@ class PhraseDataService(BaseService):
 
         sent_ids = {p.id for p in batch}
         lang_raw = batch[0].lang
-        actual_lang = lang_raw.value if hasattr(lang_raw, "value") else str(lang_raw)
+        actual_lang = (
+            lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)
+        )
 
         # 2. Call Mistral for all phrases in one request
         raw = await self._call_mistral(batch, actual_lang)

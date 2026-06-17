@@ -4,7 +4,6 @@ import logging
 import re
 from typing import Any
 
-from app.adapters.ai_client import MistralClient
 from app.common.enums import PhraseStatusEnum
 from app.common.logging import log_decorator, logger
 from app.services.base import BaseService
@@ -23,10 +22,10 @@ class PhraseService(BaseService):
             prompt: the vision prompt to use
 
         :returns:
-            raw_text: raw model response string, or None if ai_client is not MistralClient
+            raw_text: raw model response string, or None if ai_client does not support vision
         """
-        if not isinstance(self.ai_client, MistralClient):
-            logger.error("ai_client is not MistralClient")
+        if not self.ai_client.supports_vision:
+            logger.error("ai_client does not support vision")
             return None
         images_b64 = [base64.b64encode(img).decode() for img in images_raw]
         return await self.ai_client.vision_chat(images_b64=images_b64, prompt=prompt)

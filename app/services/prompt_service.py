@@ -108,11 +108,57 @@ PROMPT_MISTRAL_VARIANTS_EN = (
     '"E": {"male": [...], "female": [...]}}, ...]}}'
 )
 
+PROMPT_MISTRAL_TRANSLATE_RU = (
+    "Ты переводчик. Переводишь короткие наблюдения о поведении человека с русского на английский язык. "
+    "Всегда отвечай строго в формате JSON без дополнительных пояснений.\n\n"
+    "Тебе дан список наблюдений на русском, каждое с вариантами комментариев по настроениям A-E. "
+    "Для каждого наблюдения:\n"
+    '1. Переведи исходную фразу на английский (поле "translated")\n'
+    "2. Переведи все варианты комментариев (A-E, male/female) на английский, сохраняя тон каждого настроения\n\n"
+    "Настроения:\n"
+    "A — cynically: very harsh and brutal, mockingly, can go over the top, but no slurs\n"
+    "B — bluntly: honest, dry, say it as it is\n"
+    "C — normally: neutral tone, ordinary speech\n"
+    "D — complimentary: gently, with a light touch of praise\n"
+    "E — enthusiastically: rapturously, as positive as possible\n\n"
+    'Формат ответа — JSON объект с ключом "results":\n'
+    '{"results": [{"id": <phrase_id>, "translated": "<перевод фразы на английский>", '
+    '"A": {"male": ["p1","p2","p3","p4","p5"], "female": ["p1","p2","p3","p4","p5"]}, '
+    '"B": {"male": [...], "female": [...]}, '
+    '"C": {"male": [...], "female": [...]}, '
+    '"D": {"male": [...], "female": [...]}, '
+    '"E": {"male": [...], "female": [...]}}, ...]}'
+)
+
+PROMPT_MISTRAL_TRANSLATE_EN = (
+    "You are a translator. You translate short observations about a person's behaviour from English to Russian. "
+    "Always respond strictly in JSON format without any additional text.\n\n"
+    "You are given a list of observations in English, each with tone variants A-E. "
+    "For each observation:\n"
+    '1. Translate the original phrase to Russian (field "translated")\n'
+    "2. Translate all tone variants (A-E, male/female) to Russian, preserving the character of each tone\n\n"
+    "Tones:\n"
+    "A — цинично: очень грубо и жестоко оскорби, с насмешкой, можно за гранью, но без матов\n"
+    "B — прямолинейно: честно, цинично и сухо, говоришь как есть\n"
+    "C — нормально: нейтральный тон, обычная речь\n"
+    "D — комплиментарно: мягко, с лёгкой похвалой\n"
+    "E — хвалебно: восторженно, максимально позитивно\n\n"
+    'Response format — JSON object with key "results":\n'
+    '{"results": [{"id": <phrase_id>, "translated": "<перевод фразы на русский>", '
+    '"A": {"male": ["ф1","ф2","ф3","ф4","ф5"], "female": ["ф1","ф2","ф3","ф4","ф5"]}, '
+    '"B": {"male": [...], "female": [...]}, '
+    '"C": {"male": [...], "female": [...]}, '
+    '"D": {"male": [...], "female": [...]}, '
+    '"E": {"male": [...], "female": [...]}}, ...]}'
+)
+
 _PROMPTS: dict[tuple[str, str], str] = {
     ("pixtral_vision", "ru"): PROMPT_PIXTRAL_RU,
     ("pixtral_vision", "en"): PROMPT_PIXTRAL_EN,
     ("mistral_variants", "ru"): PROMPT_MISTRAL_VARIANTS_RU,
     ("mistral_variants", "en"): PROMPT_MISTRAL_VARIANTS_EN,
+    ("mistral_translate", "ru"): PROMPT_MISTRAL_TRANSLATE_RU,
+    ("mistral_translate", "en"): PROMPT_MISTRAL_TRANSLATE_EN,
 }
 
 

@@ -1,4 +1,8 @@
+from typing import Generic, TypeVar
+
 from pydantic import BaseModel
+
+T = TypeVar("T", bound=BaseModel)
 
 
 class ToneVariants(BaseModel):
@@ -19,7 +23,13 @@ class PhraseVariants(BaseModel):
     E: ToneVariants | None = None
 
 
-class W2MistralResponse(BaseModel):
-    """Root response schema for the W2 Mistral variant generation call"""
+class TranslatedPhrase(PhraseVariants):
+    """Translated phrase text and all tone variants for a single item"""
 
-    results: list[PhraseVariants]
+    translated: str
+
+
+class MistralResponse(BaseModel, Generic[T]):
+    """Generic root response schema for Mistral calls returning a results list"""
+
+    results: list[T]

@@ -137,8 +137,10 @@ class PhraseRepository(BaseRepository):
         return list(result.scalars().all())
 
     @log_decorator(level=logging.DEBUG)
-    async def get_ids_by_originals(self, originals: list[str], lang: str) -> list[int]:
-        """Return IDs of phrases matching the given originals and lang
+    async def get_ids_by_originals(
+        self, originals: list[str], lang: str
+    ) -> dict[str, int]:
+        """Return a mapping of original text → ID for phrases matching the given originals and lang
 
         Used after bulk_create (do_nothing) to retrieve IDs of both newly inserted
         and pre-existing rows that would have conflicted.
@@ -148,14 +150,14 @@ class PhraseRepository(BaseRepository):
             lang: language code to filter by
 
         :returns:
-            ids: list of phrase IDs
+            mapping: dict of {original_text: phrase_id}
         """
-        stmt = select(Phrase.id).where(
+        stmt = select(Phrase.original, Phrase.id).where(
             Phrase.original.in_(originals),
             Phrase.lang == lang,
         )
         result = await self._session.execute(stmt)
-        return list(result.scalars().all())
+        return {row.original: row.id for row in result}
 
     @log_decorator(level=logging.DEBUG)
     async def update_status(self, ids: list[int], status: PhraseStatusEnum) -> None:

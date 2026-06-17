@@ -63,3 +63,48 @@ async def test_bulk_create_on_conflict_skips_duplicate(
         repo = PhraseRepository(session)
         result = await repo.bulk_create(rows)
         assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_ids_by_originals_returns_mapping(db_session: AsyncSession) -> None:
+    repo = PhraseRepository(db_session)
+    rows = [
+        {
+            "original": "alpha phrase",
+            "tag": "behavior",
+            "lang": "en",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+        {
+            "original": "beta phrase",
+            "tag": "appearance",
+            "lang": "en",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+    ]
+    await repo.bulk_create(rows)
+    await db_session.commit()
+
+    result = await repo.get_ids_by_originals(
+        originals=["alpha phrase", "beta phrase"], lang="en"
+    )
+    assert set(result.keys()) == {"alpha phrase", "beta phrase"}
+    assert all(isinstance(v, int) for v in result.values())
+
+
+@pytest.mark.asyncio
+async def test_get_ids_by_originals_filters_by_lang(db_session: AsyncSession) -> None:
+    repo = PhraseRepository(db_session)
+    rows = [
+        {
+            "original": "gamma phrase",
+            "tag": "behavior",
+            "lang": "ru",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+    ]
+    await repo.bulk_create(rows)
+    await db_session.commit()
+
+    result = await repo.get_ids_by_originals(originals=["gamma phrase"], lang="en")
+    assert result == {}

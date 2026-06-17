@@ -14,7 +14,11 @@ class HealthCheckService(BaseService):
 
     @log_decorator(level=logging.DEBUG)
     async def check(self) -> None:
-        """Run all infrastructure health checks concurrently"""
+        """Run all infrastructure health checks concurrently
+
+        :returns:
+            None
+        """
         await asyncio.gather(
             self.check_db_status(),
             self.check_vector_db_status(),

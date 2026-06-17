@@ -5,8 +5,6 @@ import logging
 import re
 from typing import Any
 
-import aiohttp
-
 from app.adapters.ai_client import GroqClient, MistralClient
 from app.common.logging import log_decorator, logger
 from app.services.base import BaseService
@@ -331,7 +329,6 @@ class TestService(BaseService):
                 {"role": "user", "content": prompt},
             ],
             options={"response_format": {"type": "json_object"}},
-            timeout=aiohttp.ClientTimeout(total=60),
         )
         if not raw:
             return None
@@ -403,7 +400,6 @@ class TestService(BaseService):
                 {"role": "user", "content": prompt},
             ],
             options={"response_format": {"type": "json_object"}},
-            timeout=aiohttp.ClientTimeout(total=60),
         )
         if not raw:
             return [None] * len(phrases)

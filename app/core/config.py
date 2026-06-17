@@ -33,7 +33,8 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: str = ""
     MISTRAL_MODEL: str = "mistral-small-latest"
     MISTRAL_EMBED_MODEL: str = "mistral-embed"
-    MISTRAL_TIMEOUT_SEC: int = 30
+    MISTRAL_TIMEOUT_SEC: int = 60
+    MISTRAL_VISION_TIMEOUT_SEC: int = 120
 
     # [AI] Groq
     GROQ_API_KEY: str = ""
@@ -58,7 +59,11 @@ class Settings(BaseSettings):
 
     @property
     def database_url(self) -> str:
-        """Generate the asyncpg connection string for PostgreSQL"""
+        """Generate the asyncpg connection string for PostgreSQL
+
+        :returns:
+            url: asyncpg-compatible DSN string
+        """
         return (
             f"postgresql+asyncpg://{self.POSTGRES_USER}:{self.POSTGRES_PASSWORD}"
             f"@{self.POSTGRES_HOST}:{self.POSTGRES_PORT}/{self.POSTGRES_DB}"
@@ -66,7 +71,14 @@ class Settings(BaseSettings):
 
     @property
     def log_level(self) -> int:
-        """Convert string log level to numeric logging level"""
+        """Convert string log level to numeric logging level
+
+        :raise:
+            ValueError: if LOG_LEVEL is not a recognised level name
+
+        :returns:
+            level: numeric logging constant (e.g. logging.INFO)
+        """
         level = self.LOG_LEVEL.upper()
         levels = {
             "DEBUG": logging.DEBUG,

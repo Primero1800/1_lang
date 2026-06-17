@@ -28,6 +28,10 @@ class VisionMessage(TypedDict):
 class AIClientAbstract(abc.ABC):
     """Abstract base class for AI client implementations"""
 
+    supports_vision: bool = False
+    supports_embed: bool = False
+    supports_chat: bool = True
+
     @abc.abstractmethod
     async def start(self) -> None:
         """Start the client and initialise any internal resources
@@ -104,9 +108,32 @@ class AIClientAbstract(abc.ABC):
             embedding: a single vector (str input) or list of vectors (list input), or None on failure
         """
 
+    @abc.abstractmethod
+    async def vision_chat(
+        self,
+        images_b64: list[str],
+        prompt: str,
+        model: str | None = None,
+        temperature: float | None = None,
+    ) -> str | None:
+        """Send images and a text prompt to a vision model
+
+        :param:
+            images_b64: list of base64-encoded image strings
+            prompt: instruction text accompanying the images
+            model: vision model identifier override
+            temperature: sampling temperature override
+
+        :returns:
+            text: model response text, or None on failure
+        """
+
 
 class MistralClient(AIClientAbstract):
     """Mistral AI client using the shared aiohttp session"""
+
+    supports_vision = True
+    supports_embed = True
 
     _BASE_URL = "https://api.mistral.ai/v1"
 
@@ -123,6 +150,9 @@ class MistralClient(AIClientAbstract):
         self._model: str = settings.MISTRAL_MODEL
         self._embed_model: str = settings.MISTRAL_EMBED_MODEL
         self._timeout = aiohttp.ClientTimeout(total=settings.MISTRAL_TIMEOUT_SEC)
+        self._vision_timeout = aiohttp.ClientTimeout(
+            total=settings.MISTRAL_VISION_TIMEOUT_SEC
+        )
         self._headers = {
             "Authorization": f"Bearer {settings.MISTRAL_API_KEY}",
             "Content-Type": "application/json",
@@ -177,7 +207,6 @@ class MistralClient(AIClientAbstract):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
-        timeout: aiohttp.ClientTimeout | None = None,
     ) -> str | None:
         """Send a multi-turn chat request to the Mistral API
 
@@ -186,7 +215,6 @@ class MistralClient(AIClientAbstract):
             model: model identifier override
             temperature: sampling temperature override
             options: additional payload fields merged into request body
-            timeout: per-request timeout override
 
         :returns:
             text: assistant reply text, or None on failure
@@ -199,7 +227,7 @@ class MistralClient(AIClientAbstract):
             payload["temperature"] = temperature
         if options:
             payload.update(options)
-        result = await self.__post("/chat/completions", payload, timeout=timeout)
+        result = await self.__post("/chat/completions", payload)
         try:
             return result["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -273,8 +301,9 @@ class MistralClient(AIClientAbstract):
         }
         if temperature is not None:
             payload["temperature"] = temperature
-        vision_timeout = aiohttp.ClientTimeout(total=120)
-        result = await self.__post("/chat/completions", payload, timeout=vision_timeout)
+        result = await self.__post(
+            "/chat/completions", payload, timeout=self._vision_timeout
+        )
         try:
             return result["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -290,7 +319,10 @@ class MistralClient(AIClientAbstract):
     ) -> Any:
         url = f"{self._BASE_URL}{path}"
         async with self.session.post(
-            url, json=payload, headers=self._headers, timeout=timeout or self._timeout
+            url,
+            json=payload,
+            headers=self._headers,
+            timeout=timeout or self._timeout,
         ) as response:
             response.raise_for_status()
             return await response.json()
@@ -298,6 +330,9 @@ class MistralClient(AIClientAbstract):
 
 class GroqClient(AIClientAbstract):
     """Groq AI client — LLM inference and vision analysis, no embeddings"""
+
+    supports_vision = True
+    supports_embed = False
 
     _BASE_URL = "https://api.groq.com/openai/v1"
 
@@ -452,7 +487,7 @@ class GroqClient(AIClientAbstract):
         :returns:
             None
         """
-        raise NotImplementedError("Groq does not support embeddings")
+        return None
 
     @external_request_exception_handler(is_raise=False)
     async def __post(self, path: str, payload: dict[str, Any]) -> Any:
