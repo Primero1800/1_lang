@@ -168,7 +168,7 @@ async def w4_embed(
         PhraseEmbeddingService,
         Depends(get_phrase_embedding_service_without_session),
     ],
-    batch_size: Annotated[int, Query(ge=1, le=50)] = 5,
+    batch_size: Annotated[int, Query(ge=1, le=500)] = 200,
 ) -> Any:
     """Trigger W4: embed a batch of translated phrases via Mistral and store vectors
 
