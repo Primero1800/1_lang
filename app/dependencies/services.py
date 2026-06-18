@@ -7,12 +7,16 @@ from app.adapters.vector_client import VectorClientAbstract
 from app.dependencies.infrastructure import (
     get_ai_client,
     get_groq_client,
+    get_phrase_loading_repository,
     get_vector_client,
+    get_vector_client_main,
 )
+from app.repositories.phrase_loading_repository import PhraseLoadingRepository
 from app.services.base import BaseDeps, BaseService
 from app.services.health_check_service import HealthCheckService
 from app.services.phrase_data_service import PhraseDataService
 from app.services.phrase_embedding_service import PhraseEmbeddingService
+from app.services.phrase_loading_service import PhraseLoadingService
 from app.services.phrase_service import PhraseService
 from app.services.phrase_translation_service import PhraseTranslationService
 from app.services.test_service import TestService
@@ -24,6 +28,9 @@ async def get_base_deps(
     ai_client: Annotated[AIClientAbstract, Depends(get_ai_client)],
     ai_client2: Annotated[AIClientAbstract, Depends(get_groq_client)],
     vector_client: Annotated[VectorClientAbstract, Depends(get_vector_client)],
+    vector_client_main: Annotated[
+        VectorClientAbstract, Depends(get_vector_client_main)
+    ],
 ) -> BaseDeps:
     """Assemble and return the shared infrastructure dependency container
 
@@ -31,7 +38,8 @@ async def get_base_deps(
         uow_factory: unit-of-work factory (not context-managed)
         ai_client: primary AI client (Mistral)
         ai_client2: secondary AI client (Groq)
-        vector_client: Qdrant vector database client
+        vector_client: local Qdrant client (bcp)
+        vector_client_main: remote Qdrant client (main)
 
     :returns:
         base_deps: populated BaseDeps dataclass instance
@@ -41,6 +49,7 @@ async def get_base_deps(
         ai_client=ai_client,
         ai_client2=ai_client2,
         vector_client=vector_client,
+        vector_client_main=vector_client_main,
     )
 
 
@@ -103,3 +112,24 @@ get_phrase_translation_service_without_session = _create_service_without_session
 get_phrase_embedding_service_without_session = _create_service_without_session(
     PhraseEmbeddingService
 )
+
+
+async def get_phrase_loading_service_without_session(
+    base_deps: Annotated[BaseDeps, Depends(get_base_deps)],
+    loading_repository: Annotated[
+        PhraseLoadingRepository, Depends(get_phrase_loading_repository)
+    ],
+) -> PhraseLoadingService:
+    """FastAPI dependency for PhraseLoadingService with injected Qdrant repository
+
+    :param:
+        base_deps: shared infrastructure dependencies
+        loading_repository: Qdrant-backed repository for phrase upsert operations
+
+    :returns:
+        service: PhraseLoadingService instance ready for W5 processing
+    """
+    return PhraseLoadingService(
+        base_deps=base_deps,
+        loading_repository=loading_repository,
+    )

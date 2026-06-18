@@ -19,10 +19,10 @@ class HealthCheckService(BaseService):
         :returns:
             None
         """
-        await asyncio.gather(
-            self.check_db_status(),
-            self.check_vector_db_status(),
-        )
+        checks = [self.check_db_status(), self.check_vector_db_status()]
+        if settings.QDRANT_MAIN_ENABLED:
+            checks.append(self.check_vector_db_main_status())
+        await asyncio.gather(*checks)
 
     @log_decorator(level=logging.DEBUG)
     async def check_db_status(self) -> None:
@@ -70,3 +70,25 @@ class HealthCheckService(BaseService):
         except Exception as exc:
             logger.critical("Qdrant health check error", exc_info=exc)
             raise VectorDBHealthCheckError("Qdrant health check error") from exc
+
+    @log_decorator(level=logging.DEBUG)
+    async def check_vector_db_main_status(self) -> None:
+        """Check remote (main) VectorDB status
+
+        :raise:
+            VectorDBHealthCheckError: if remote VectorDB is unreachable or times out
+        """
+
+        async def _exec() -> bool:
+            return await self.vector_client_main.collection_exists(raise_exception=True)
+
+        try:
+            await asyncio.wait_for(_exec(), timeout=settings.HEALTH_CHECK_TIMEOUT_SEC)
+        except asyncio.TimeoutError as exc:
+            logger.critical("Qdrant main health check timeout", exc_info=exc)
+            raise VectorDBHealthCheckError(
+                f"Qdrant main health check timeout after {settings.HEALTH_CHECK_TIMEOUT_SEC}s"
+            ) from exc
+        except Exception as exc:
+            logger.critical("Qdrant main health check error", exc_info=exc)
+            raise VectorDBHealthCheckError("Qdrant main health check error") from exc

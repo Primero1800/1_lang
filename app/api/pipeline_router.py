@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from app.common.exceptions import IntegrityDataException
 from app.common.logging import log_decorator
 from app.dependencies.services import (
+    get_phrase_loading_service_without_session,
     get_phrase_data_service_without_session,
     get_phrase_embedding_service_without_session,
     get_phrase_service_without_session,
@@ -16,9 +17,11 @@ from app.pyd.responses import (
     W2GenerateResponse,
     W3TranslateResponse,
     W4EmbedResponse,
+    W5LoadResponse,
 )
 from app.services.phrase_data_service import PhraseDataService
 from app.services.phrase_embedding_service import PhraseEmbeddingService
+from app.services.phrase_loading_service import PhraseLoadingService
 from app.services.phrase_service import PhraseService
 from app.services.phrase_translation_service import PhraseTranslationService
 
@@ -188,4 +191,38 @@ async def w4_embed(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Integrity constraint violation during embedding",
+        ) from e
+
+
+@router.post(
+    "/w5_load",
+    response_model=W5LoadResponse,
+    status_code=status.HTTP_200_OK,
+)
+@log_decorator(level=logging.INFO)
+async def w5_load(
+    phrase_loading_service: Annotated[
+        PhraseLoadingService,
+        Depends(get_phrase_loading_service_without_session),
+    ],
+    batch_size: Annotated[int, Query(ge=1, le=2000)] = 2,
+) -> Any:
+    """Trigger W5: load a batch of embedded phrases into Qdrant
+
+    :role:
+        user
+
+    :param:
+        phrase_loading_service: service responsible for Qdrant upsert
+        batch_size: number of phrases per upsert call
+
+    :returns:
+        result: W5LoadResponse with processed, failed, and skipped counts
+    """
+    try:
+        return await phrase_loading_service.w5_load(batch_size=batch_size)
+    except IntegrityDataException as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Integrity constraint violation during loading",
         ) from e

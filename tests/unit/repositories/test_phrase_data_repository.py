@@ -100,3 +100,22 @@ async def test_bulk_upsert_variants_empty_is_noop(db_session: AsyncSession) -> N
 
     result = await db_session.execute(select(PhraseData))
     assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_get_by_phrase_ids_returns_variants(db_session: AsyncSession) -> None:
+    phrase = await _create_phrase(db_session)
+    repo = PhraseDataRepository(db_session)
+    await repo.bulk_upsert_variants([{"phrase_id": phrase.id, "variants": _variants()}])
+    await db_session.commit()
+
+    result = await repo.get_by_phrase_ids([phrase.id])
+    assert len(result) == 1
+    assert result[0].phrase_id == phrase.id
+
+
+@pytest.mark.asyncio
+async def test_get_by_phrase_ids_empty_returns_empty(db_session: AsyncSession) -> None:
+    repo = PhraseDataRepository(db_session)
+    result = await repo.get_by_phrase_ids([])
+    assert result == []

@@ -257,3 +257,73 @@ async def test_w4_embed_custom_batch_size(async_client: AsyncClient) -> None:
     response = await async_client.post("/pipeline/w4_embed?batch_size=100")
     assert response.status_code == 200
     mock_service.w4_embed.assert_called_once_with(batch_size=100)
+
+
+# --- /pipeline/w5_load ---
+
+
+@pytest.mark.asyncio
+async def test_w5_load_success(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_loading_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w5_load.return_value = {
+        "processed": 8,
+        "failed": 1,
+        "skipped": 0,
+        "upserted": 8,
+    }
+    app.dependency_overrides[get_phrase_loading_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w5_load")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["processed"] == 8
+    assert data["failed"] == 1
+    assert data["skipped"] == 0
+    assert data["upserted"] == 8
+
+
+@pytest.mark.asyncio
+async def test_w5_load_skipped_when_no_batch(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_loading_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w5_load.return_value = {
+        "processed": 0,
+        "failed": 0,
+        "skipped": 1,
+        "upserted": 0,
+    }
+    app.dependency_overrides[get_phrase_loading_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w5_load")
+    assert response.status_code == 200
+    assert response.json()["skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_w5_load_custom_batch_size(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_loading_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w5_load.return_value = {
+        "processed": 100,
+        "failed": 0,
+        "skipped": 0,
+        "upserted": 100,
+    }
+    app.dependency_overrides[get_phrase_loading_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w5_load?batch_size=100")
+    assert response.status_code == 200
+    mock_service.w5_load.assert_called_once_with(batch_size=100)
