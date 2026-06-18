@@ -53,3 +53,9 @@ class W3TranslateResponse(WorkerBatchResponse):
 
 class W4EmbedResponse(WorkerBatchResponse):
     """W4 embedding batch result"""
+
+
+class W5LoadResponse(WorkerBatchResponse):
+    """W5 Qdrant load batch result"""
+
+    upserted: int = 0

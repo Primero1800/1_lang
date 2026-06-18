@@ -5,7 +5,11 @@ from app.adapters.vector_client import VectorClientAbstract
 from app.common.logging import logger
 from app.core.config import settings
 from app.core.database import initialize_db, shutdown_db
-from app.dependencies.infrastructure import get_aiohttp_session, get_vector_client, get_vector_client_main
+from app.dependencies.infrastructure import (
+    get_aiohttp_session,
+    get_vector_client,
+    get_vector_client_main,
+)
 
 
 class AppLifecycle:

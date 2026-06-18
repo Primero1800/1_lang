@@ -131,6 +131,7 @@ class QdrantVectorClient(VectorClientAbstract):
                 url=settings.QDRANT_MAIN_URL,
                 api_key=settings.QDRANT_MAIN_API_KEY,
                 check_compatibility=False,
+                timeout=60,
             )
         else:
             self._client = AsyncQdrantClient(

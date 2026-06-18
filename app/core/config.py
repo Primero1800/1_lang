@@ -52,6 +52,7 @@ class Settings(BaseSettings):
     QDRANT_MAIN_ENABLED: bool = True
     QDRANT_MAIN_URL: str = ""
     QDRANT_MAIN_API_KEY: str = ""
+    QDRANT_MAIN_UPSERT_CHUNK_SIZE: int = 100
 
     VECTOR_DB_COLLECTION: str
     VECTOR_DB_VECTOR_SIZE: int = 1024

@@ -7,6 +7,7 @@ from fastapi import Depends
 from app.adapters.ai_client import AIClientAbstract, MistralClient, GroqClient
 from app.adapters.vector_client import VectorClientAbstract, QdrantVectorClient
 from app.core.config import settings
+from app.repositories.phrase_loading_repository import PhraseLoadingRepository
 
 aiohttp_session: aiohttp.ClientSession | None = None
 
@@ -76,6 +77,21 @@ async def get_vector_client() -> VectorClientAbstract:
     if not vector_client:
         vector_client = QdrantVectorClient()
     return vector_client
+
+
+async def get_phrase_loading_repository() -> PhraseLoadingRepository:
+    """Get a PhraseLoadingRepository wired to the active Qdrant client
+
+    Uses the remote (main) client when QDRANT_MAIN_ENABLED, otherwise local (bcp).
+
+    :returns:
+        repository: PhraseLoadingRepository instance
+    """
+    if settings.QDRANT_MAIN_ENABLED:
+        client = await get_vector_client_main()
+    else:
+        client = await get_vector_client()
+    return PhraseLoadingRepository(client)
 
 
 async def get_vector_client_main() -> VectorClientAbstract:

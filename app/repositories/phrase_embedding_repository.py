@@ -1,6 +1,6 @@
 import logging
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.common.logging import log_decorator
@@ -34,3 +34,19 @@ class PhraseEmbeddingRepository(BaseRepository):
             },
         )
         await self._session.execute(stmt)
+
+    @log_decorator(level=logging.DEBUG)
+    async def get_by_phrase_ids(self, phrase_ids: list[int]) -> list[PhraseEmbedding]:
+        """Return PhraseEmbedding records for the given phrase IDs
+
+        :param:
+            phrase_ids: list of phrase IDs to fetch embeddings for
+
+        :returns:
+            records: list of PhraseEmbedding objects
+        """
+        if not phrase_ids:
+            return []
+        stmt = select(PhraseEmbedding).where(PhraseEmbedding.phrase_id.in_(phrase_ids))
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
