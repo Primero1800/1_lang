@@ -94,3 +94,24 @@ async def test_bulk_upsert_embeddings_empty_is_noop(db_session: AsyncSession) ->
 
     result = await db_session.execute(select(PhraseEmbedding))
     assert result.scalars().all() == []
+
+
+@pytest.mark.asyncio
+async def test_get_by_phrase_ids_returns_embeddings(db_session: AsyncSession) -> None:
+    phrase = await _create_phrase(db_session)
+    repo = PhraseEmbeddingRepository(db_session)
+    await repo.bulk_upsert_embeddings(
+        [{"phrase_id": phrase.id, "embedding": [0.1, 0.2]}]
+    )
+    await db_session.commit()
+
+    result = await repo.get_by_phrase_ids([phrase.id])
+    assert len(result) == 1
+    assert result[0].phrase_id == phrase.id
+
+
+@pytest.mark.asyncio
+async def test_get_by_phrase_ids_empty_returns_empty(db_session: AsyncSession) -> None:
+    repo = PhraseEmbeddingRepository(db_session)
+    result = await repo.get_by_phrase_ids([])
+    assert result == []

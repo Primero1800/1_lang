@@ -131,7 +131,7 @@ class QdrantVectorClient(VectorClientAbstract):
                 url=settings.QDRANT_MAIN_URL,
                 api_key=settings.QDRANT_MAIN_API_KEY,
                 check_compatibility=False,
-                timeout=60,
+                timeout=settings.QDRANT_TIMEOUT,
             )
         else:
             self._client = AsyncQdrantClient(
@@ -142,6 +142,7 @@ class QdrantVectorClient(VectorClientAbstract):
                 api_key=settings.QDRANT_API_KEY,
                 check_compatibility=False,
                 https=settings.QDRANT_HTTPS,
+                timeout=settings.QDRANT_TIMEOUT,
             )
 
     async def start(self) -> None:

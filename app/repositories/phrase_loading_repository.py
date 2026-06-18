@@ -23,18 +23,20 @@ class PhraseLoadingRepository:
         self._client = vector_client
 
     @log_decorator(level=logging.DEBUG)
-    async def bulk_upsert(self, points: list[PointStruct]) -> int:
+    async def bulk_upsert(self, points: list[PointStruct]) -> tuple[int, set[int]]:
         """Upsert a batch of points into the default Qdrant collection
 
         :param:
             points: list of PointStruct objects with id, vector, and payload
 
         :returns:
-            count: number of points submitted (0 on failure)
+            count: number of points successfully upserted
+            failed_ids: set of point IDs from chunks that failed
         """
         if not points:
-            return 0
+            return 0, set()
         upserted = 0
+        failed_ids: set[int] = set()
         for i in range(0, len(points), settings.QDRANT_MAIN_UPSERT_CHUNK_SIZE):
             chunk = points[i : i + settings.QDRANT_MAIN_UPSERT_CHUNK_SIZE]
             try:
@@ -46,7 +48,10 @@ class PhraseLoadingRepository:
                 logger.error(
                     f"[W5, loading] Qdrant upsert chunk {i}–{i + len(chunk)} failed: {e}"
                 )
+                failed_ids.update(p.id for p in chunk)  # type: ignore[misc]
                 continue
             if result is not None:
                 upserted += len(chunk)
-        return upserted
+            else:
+                failed_ids.update(p.id for p in chunk)  # type: ignore[misc]
+        return upserted, failed_ids

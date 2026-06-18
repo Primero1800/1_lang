@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 from uuid import uuid4
 
 from qdrant_client.models import PointStruct
@@ -38,7 +39,7 @@ class PhraseLoadingService(BaseService):
     @log_decorator(level=logging.INFO)
     async def _fetch_batch(
         self, batch_size: int
-    ) -> tuple[list[Phrase], dict[int, list[float]], dict[int, dict]]:
+    ) -> tuple[list[Phrase], dict[int, list[float]], dict[int, dict[str, Any]]]:
         """Atomically claim a batch of phrases ready for loading and fetch their embeddings and variants
 
         :param:
@@ -50,6 +51,7 @@ class PhraseLoadingService(BaseService):
             variants_map: dict of {phrase_id: variants dict}
         """
         async with self.uow_factory as uow:
+            # 1. Claim a batch of phrases eligible for loading
             batch = await uow.phrase_repository.get_batch_for_processing(
                 in_progress_status=PhraseStatusEnum.LOADING_IN_PROGRESS,
                 priority_status=PhraseStatusEnum.LOADING_FAILED,
@@ -58,21 +60,25 @@ class PhraseLoadingService(BaseService):
             )
             if not batch:
                 return [], {}, {}
+            # 2. Log each chosen phrase
             for i, member in enumerate(batch, start=1):
                 logger.info(
                     f"[W5, loading] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
             ids = [p.id for p in batch]
+            # 3. Fetch embeddings and variants for the batch
             embeddings: list[
                 PhraseEmbedding
             ] = await uow.phrase_embedding_repository.get_by_phrase_ids(ids)
             variants: list[
                 PhraseData
             ] = await uow.phrase_data_repository.get_by_phrase_ids(ids)
+            # 4. Mark phrases as in-progress to prevent double-claiming
             await uow.phrase_repository.update_status(
                 ids=ids,
                 status=PhraseStatusEnum.LOADING_IN_PROGRESS,
             )
+        # 5. Build lookup maps by phrase_id
         embeddings_map = {e.phrase_id: e.embedding for e in embeddings}
         variants_map = {v.phrase_id: v.variants for v in variants}
         return batch, embeddings_map, variants_map
@@ -81,7 +87,7 @@ class PhraseLoadingService(BaseService):
         self,
         batch: list[Phrase],
         embeddings_map: dict[int, list[float]],
-        variants_map: dict[int, dict],
+        variants_map: dict[int, dict[str, Any]],
     ) -> tuple[list[PointStruct], set[int]]:
         """Build Qdrant PointStruct objects for phrases that have both embedding and variants
 
@@ -145,14 +151,13 @@ class PhraseLoadingService(BaseService):
         upsert_failed_ids: set[int] = set()
         upserted_count = 0
         if points:
-            upserted_count = await self.loading_repository.bulk_upsert(points)
+            (
+                upserted_count,
+                upsert_failed_ids,
+            ) = await self.loading_repository.bulk_upsert(points)
             logger.info(
                 f"[W5, loading] upserted to Qdrant: {upserted_count}/{len(points)}"
             )
-            if upserted_count == 0:
-                upsert_failed_ids = {
-                    p.id for p in batch if p.id not in build_failed_ids
-                }
 
         failed_ids = build_failed_ids | upsert_failed_ids
         done_ids = {p.id for p in batch} - failed_ids

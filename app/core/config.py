@@ -48,6 +48,7 @@ class Settings(BaseSettings):
     QDRANT_API_KEY: Annotated[str, Field(validation_alias="QDRANT__SERVICE__API_KEY")]
     QDRANT_PREFER_GRPC: bool = True
     QDRANT_HTTPS: bool = False
+    QDRANT_TIMEOUT: int = 60
 
     QDRANT_MAIN_ENABLED: bool = True
     QDRANT_MAIN_URL: str = ""

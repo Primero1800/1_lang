@@ -120,7 +120,15 @@ async def get_phrase_loading_service_without_session(
         PhraseLoadingRepository, Depends(get_phrase_loading_repository)
     ],
 ) -> PhraseLoadingService:
-    """FastAPI dependency for PhraseLoadingService with injected Qdrant repository"""
+    """FastAPI dependency for PhraseLoadingService with injected Qdrant repository
+
+    :param:
+        base_deps: shared infrastructure dependencies
+        loading_repository: Qdrant-backed repository for phrase upsert operations
+
+    :returns:
+        service: PhraseLoadingService instance ready for W5 processing
+    """
     return PhraseLoadingService(
         base_deps=base_deps,
         loading_repository=loading_repository,

@@ -13,6 +13,7 @@ def phrase_data_service() -> PhraseDataService:
     base_deps.ai_client = MagicMock()
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
+    base_deps.vector_client_main = MagicMock()
     return PhraseDataService(base_deps=base_deps)
 
 

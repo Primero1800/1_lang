@@ -12,6 +12,7 @@ def phrase_embedding_service() -> PhraseEmbeddingService:
     base_deps.ai_client = MagicMock()
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
+    base_deps.vector_client_main = MagicMock()
     return PhraseEmbeddingService(base_deps=base_deps)
 
 
