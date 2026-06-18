@@ -1,4 +1,4 @@
-from sqlalchemy import String, UniqueConstraint, text
+from sqlalchemy import Enum as SqlEnum, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.enums import LangEnum, PhraseStatusEnum, TagEnum
@@ -30,8 +30,9 @@ class Phrase(Base):
         comment="Язык фразы",
     )
     status: Mapped[PhraseStatusEnum] = mapped_column(
-        default=PhraseStatusEnum.DRAFT.value,
-        server_default=text(f"'{PhraseStatusEnum.DRAFT.value}'"),
+        SqlEnum(PhraseStatusEnum),
+        default=PhraseStatusEnum.DRAFT,
+        server_default=text("'DRAFT'"),
         comment="Статус обработки",
     )
 
