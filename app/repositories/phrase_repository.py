@@ -90,38 +90,41 @@ class PhraseRepository(BaseRepository):
         in_progress_status: PhraseStatusEnum,
         priority_status: PhraseStatusEnum,
         base_statuses: list[PhraseStatusEnum],
-        lang: str,
-        exclude_id: int,
+        lang: str | None = None,
+        exclude_id: int | None = None,
         limit: int = 6,
     ) -> list[Phrase]:
-        """Return additional phrases for a batch, filtered by lang and excluding one ID
+        """Return phrases for a batch with optional lang and exclude_id filters
 
         :param:
             in_progress_status: the in-progress status to detect stuck phrases
             priority_status: status processed first (e.g. failed)
             base_statuses: remaining eligible statuses
-            lang: language code to match
-            exclude_id: phrase ID already claimed as the batch leader
-            limit: maximum number of additional phrases to return
+            lang: language code to match; None to skip language filter
+            exclude_id: phrase ID to exclude; None to skip exclusion filter
+            limit: maximum number of phrases to return
 
         :returns:
-            phrases: list of additional Phrase objects, locked for update
+            phrases: list of Phrase objects, locked for update
         """
         stuck = and_(
             Phrase.status == in_progress_status,
             Phrase.updated_at
             < func.now() - timedelta(minutes=settings.STUCK_THRESHOLD),
         )
+        conditions = [
+            or_(
+                Phrase.status.in_([priority_status, *base_statuses]),
+                stuck,
+            ),
+        ]
+        if lang is not None:
+            conditions.append(Phrase.lang == lang)
+        if exclude_id is not None:
+            conditions.append(Phrase.id != exclude_id)
         stmt = (
             select(Phrase)
-            .where(
-                or_(
-                    Phrase.status.in_([priority_status, *base_statuses]),
-                    stuck,
-                ),
-                Phrase.lang == lang,
-                Phrase.id != exclude_id,
-            )
+            .where(*conditions)
             .order_by(
                 case(
                     (stuck, 0),

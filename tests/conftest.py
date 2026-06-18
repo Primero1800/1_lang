@@ -51,6 +51,7 @@ async def empty_db(test_engine) -> AsyncGenerator[None, None]:
     from app.models import Base
 
     async with test_engine.begin() as conn:
+        await conn.run_sync(Base.metadata.drop_all)
         await conn.run_sync(Base.metadata.create_all)
     yield
     async with test_engine.begin() as conn:

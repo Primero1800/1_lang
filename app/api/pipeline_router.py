@@ -7,6 +7,7 @@ from app.common.exceptions import IntegrityDataException
 from app.common.logging import log_decorator
 from app.dependencies.services import (
     get_phrase_data_service_without_session,
+    get_phrase_embedding_service_without_session,
     get_phrase_service_without_session,
     get_phrase_translation_service_without_session,
 )
@@ -14,8 +15,10 @@ from app.pyd.responses import (
     UploadImagesResponse,
     W2GenerateResponse,
     W3TranslateResponse,
+    W4EmbedResponse,
 )
 from app.services.phrase_data_service import PhraseDataService
+from app.services.phrase_embedding_service import PhraseEmbeddingService
 from app.services.phrase_service import PhraseService
 from app.services.phrase_translation_service import PhraseTranslationService
 
@@ -151,4 +154,38 @@ async def w3_translate(
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail="Integrity constraint violation during translation",
+        ) from e
+
+
+@router.post(
+    "/w4_embed",
+    response_model=W4EmbedResponse,
+    status_code=status.HTTP_200_OK,
+)
+@log_decorator(level=logging.INFO)
+async def w4_embed(
+    phrase_embedding_service: Annotated[
+        PhraseEmbeddingService,
+        Depends(get_phrase_embedding_service_without_session),
+    ],
+    batch_size: Annotated[int, Query(ge=1, le=500)] = 200,
+) -> Any:
+    """Trigger W4: embed a batch of translated phrases via Mistral and store vectors
+
+    :role:
+        user
+
+    :param:
+        phrase_embedding_service: service responsible for embedding generation
+        batch_size: number of phrases per embedding call
+
+    :returns:
+        result: W4EmbedResponse with processed, failed, and skipped counts
+    """
+    try:
+        return await phrase_embedding_service.w4_embed(batch_size=batch_size)
+    except IntegrityDataException as e:
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail="Integrity constraint violation during embedding",
         ) from e

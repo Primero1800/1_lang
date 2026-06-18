@@ -203,3 +203,57 @@ async def test_w3_translate_custom_batch_size(async_client: AsyncClient) -> None
     response = await async_client.post("/pipeline/w3_translate?batch_size=3")
     assert response.status_code == 200
     mock_service.w3_translate.assert_called_once_with(batch_size=3)
+
+
+# --- /pipeline/w4_embed ---
+
+
+@pytest.mark.asyncio
+async def test_w4_embed_success(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_embedding_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w4_embed.return_value = {"processed": 10, "failed": 1, "skipped": 0}
+    app.dependency_overrides[get_phrase_embedding_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w4_embed")
+    assert response.status_code == 200
+    data = response.json()
+    assert data["processed"] == 10
+    assert data["failed"] == 1
+    assert data["skipped"] == 0
+
+
+@pytest.mark.asyncio
+async def test_w4_embed_skipped_when_no_batch(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_embedding_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w4_embed.return_value = {"processed": 0, "failed": 0, "skipped": 1}
+    app.dependency_overrides[get_phrase_embedding_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w4_embed")
+    assert response.status_code == 200
+    assert response.json()["skipped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_w4_embed_custom_batch_size(async_client: AsyncClient) -> None:
+    from app.main import app
+    from app.dependencies.services import get_phrase_embedding_service_without_session
+
+    mock_service = AsyncMock()
+    mock_service.w4_embed.return_value = {"processed": 50, "failed": 0, "skipped": 0}
+    app.dependency_overrides[get_phrase_embedding_service_without_session] = lambda: (
+        mock_service
+    )
+
+    response = await async_client.post("/pipeline/w4_embed?batch_size=100")
+    assert response.status_code == 200
+    mock_service.w4_embed.assert_called_once_with(batch_size=100)
