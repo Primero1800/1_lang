@@ -35,17 +35,21 @@ class UploadImagesResponse(BaseModel):
     skipped: int
 
 
-class W2GenerateResponse(BaseModel):
-    """Response summarising the result of a W2 variant generation batch"""
+class WorkerBatchResponse(BaseModel):
+    """Response summarising the result of a worker batch cycle"""
 
     processed: int
     failed: int
     skipped: int
 
 
-class W3TranslateResponse(BaseModel):
-    """Response summarising the result of a W3 translation batch"""
+class W2GenerateResponse(WorkerBatchResponse):
+    """W2 variant generation batch result"""
 
-    processed: int
-    failed: int
-    skipped: int
+
+class W3TranslateResponse(WorkerBatchResponse):
+    """W3 translation batch result"""
+
+
+class W4EmbedResponse(WorkerBatchResponse):
+    """W4 embedding batch result"""

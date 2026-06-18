@@ -12,6 +12,7 @@ from app.dependencies.infrastructure import (
 from app.services.base import BaseDeps, BaseService
 from app.services.health_check_service import HealthCheckService
 from app.services.phrase_data_service import PhraseDataService
+from app.services.phrase_embedding_service import PhraseEmbeddingService
 from app.services.phrase_service import PhraseService
 from app.services.phrase_translation_service import PhraseTranslationService
 from app.services.test_service import TestService
@@ -97,4 +98,8 @@ get_phrase_data_service_without_session = _create_service_without_session(
 
 get_phrase_translation_service_without_session = _create_service_without_session(
     PhraseTranslationService
+)
+
+get_phrase_embedding_service_without_session = _create_service_without_session(
+    PhraseEmbeddingService
 )
