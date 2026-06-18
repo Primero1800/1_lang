@@ -30,8 +30,7 @@ class Phrase(Base):
         comment="Язык фразы",
     )
     status: Mapped[PhraseStatusEnum] = mapped_column(
-        String(30),
-        default=PhraseStatusEnum.DRAFT,
+        default=PhraseStatusEnum.DRAFT.value,
         server_default=text(f"'{PhraseStatusEnum.DRAFT.value}'"),
         comment="Статус обработки",
     )
