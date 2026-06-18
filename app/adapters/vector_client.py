@@ -113,21 +113,35 @@ class VectorClientAbstract(abc.ABC):
 class QdrantVectorClient(VectorClientAbstract):
     """Qdrant vector database client using the async gRPC/HTTP AsyncQdrantClient"""
 
-    def __init__(self) -> None:
-        """Initialize the Qdrant client using settings from the environment
+    def __init__(self, use_main: bool = False) -> None:
+        """Initialize the Qdrant client.
+
+        When *use_main* is True connects to the remote cloud instance via
+        QDRANT_MAIN_URL / QDRANT_MAIN_API_KEY settings.
+        Otherwise uses the local host+port+gRPC settings.
+
+        :param:
+            use_main: if True, use the remote (main) Qdrant instance
 
         :returns:
             None
         """
-        self._client: AsyncQdrantClient = AsyncQdrantClient(
-            host=settings.QDRANT_HOST,
-            port=settings.QDRANT_PORT,
-            grpc_port=settings.QDRANT_GRPC_PORT,
-            prefer_grpc=settings.QDRANT_PREFER_GRPC,
-            api_key=settings.QDRANT_API_KEY,
-            check_compatibility=False,
-            https=settings.QDRANT_HTTPS,
-        )
+        if use_main:
+            self._client = AsyncQdrantClient(
+                url=settings.QDRANT_MAIN_URL,
+                api_key=settings.QDRANT_MAIN_API_KEY,
+                check_compatibility=False,
+            )
+        else:
+            self._client = AsyncQdrantClient(
+                host=settings.QDRANT_HOST,
+                port=settings.QDRANT_PORT,
+                grpc_port=settings.QDRANT_GRPC_PORT,
+                prefer_grpc=settings.QDRANT_PREFER_GRPC,
+                api_key=settings.QDRANT_API_KEY,
+                check_compatibility=False,
+                https=settings.QDRANT_HTTPS,
+            )
 
     async def start(self) -> None:
         """Ensure the default collection exists, creating it if necessary

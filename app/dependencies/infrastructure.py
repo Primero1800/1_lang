@@ -14,6 +14,7 @@ ai_client: AIClientAbstract | None = None
 groq_client: AIClientAbstract | None = None
 
 vector_client: VectorClientAbstract | None = None
+vector_client_main: VectorClientAbstract | None = None
 
 
 async def get_aiohttp_session() -> ClientSession:
@@ -66,12 +67,24 @@ async def get_groq_client(
 
 
 async def get_vector_client() -> VectorClientAbstract:
-    """Get or create the QdrantVectorClient singleton
+    """Get or create the local QdrantVectorClient singleton (bcp)
 
     :returns:
-        vector_client: the QdrantVectorClient instance
+        vector_client: the local QdrantVectorClient instance
     """
     global vector_client
     if not vector_client:
         vector_client = QdrantVectorClient()
     return vector_client
+
+
+async def get_vector_client_main() -> VectorClientAbstract:
+    """Get or create the remote QdrantVectorClient singleton (main)
+
+    :returns:
+        vector_client_main: the remote QdrantVectorClient instance
+    """
+    global vector_client_main
+    if not vector_client_main:
+        vector_client_main = QdrantVectorClient(use_main=True)
+    return vector_client_main

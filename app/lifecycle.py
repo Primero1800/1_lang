@@ -3,8 +3,9 @@ from fastapi import FastAPI
 
 from app.adapters.vector_client import VectorClientAbstract
 from app.common.logging import logger
+from app.core.config import settings
 from app.core.database import initialize_db, shutdown_db
-from app.dependencies.infrastructure import get_aiohttp_session, get_vector_client
+from app.dependencies.infrastructure import get_aiohttp_session, get_vector_client, get_vector_client_main
 
 
 class AppLifecycle:
@@ -22,6 +23,7 @@ class AppLifecycle:
         self.app = app
         self.aiohttp_session: aiohttp.ClientSession | None = None
         self.vector_client: VectorClientAbstract | None = None
+        self.vector_client_main: VectorClientAbstract | None = None
 
     async def on_startup(self) -> None:
         """Run all startup procedures
@@ -33,10 +35,14 @@ class AppLifecycle:
         await self._initialize_core()
         # 2. Create shared aiohttp session
         self.aiohttp_session = await get_aiohttp_session()
-        # 3. Create vector database client
+        # 3. Create vector database client (local bcp)
         self.vector_client = await get_vector_client()
         # 4. Start vector client and ensure collection exists
         await self.vector_client.start()
+        # 5. Start remote (main) vector client if enabled
+        if settings.QDRANT_MAIN_ENABLED:
+            self.vector_client_main = await get_vector_client_main()
+            await self.vector_client_main.start()
 
     async def on_shutdown(self) -> None:
         """Gracefully stop all services and close connections
@@ -48,6 +54,8 @@ class AppLifecycle:
             await self.aiohttp_session.close()
         if self.vector_client:
             await self.vector_client.stop()
+        if self.vector_client_main:
+            await self.vector_client_main.stop()
         await shutdown_db()
         logger.info("Shutting down the APP")
 

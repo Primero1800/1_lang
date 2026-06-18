@@ -14,6 +14,7 @@ class BaseDeps:
     ai_client: AIClientAbstract
     ai_client2: AIClientAbstract
     vector_client: VectorClientAbstract
+    vector_client_main: VectorClientAbstract
 
 
 class BaseServiceAbstract(Protocol):
@@ -50,6 +51,7 @@ class BaseService(BaseServiceAbstract):
         self.ai_client = base_deps.ai_client
         self.ai_client2 = base_deps.ai_client2
         self.vector_client = base_deps.vector_client
+        self.vector_client_main = base_deps.vector_client_main
 
     async def get(self, *args: Any, **kwargs: Any) -> Any:
         """Retrieve a resource; override in subclass
