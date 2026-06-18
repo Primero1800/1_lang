@@ -40,3 +40,7 @@ class Phrase(Base):
         back_populates="phrase",
         cascade="all, delete-orphan",
     )
+    phrase_embedding: Mapped["PhraseEmbedding"] = relationship(  # type: ignore[name-defined]  # noqa: F821
+        back_populates="phrase",
+        cascade="all, delete-orphan",
+    )
