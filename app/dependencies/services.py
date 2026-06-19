@@ -96,7 +96,14 @@ def _create_service_without_session(service_class: Type[T]) -> Callable:
 get_health_check_service_without_session = _create_service_without_session(
     HealthCheckService
 )
-get_test_service_without_session = _create_service_without_session(TestService)
+
+
+async def get_test_service_without_session(
+    base_deps: Annotated[BaseDeps, Depends(get_base_deps)],
+    vector_repository: Annotated[PhraseVectorRepository, Depends(get_phrase_vector_repository)],
+) -> TestService:
+    """FastAPI dependency for TestService with injected Qdrant vector repository"""
+    return TestService(base_deps=base_deps, vector_repository=vector_repository)
 
 get_phrase_service = _create_service(PhraseService)
 get_phrase_service_without_session = _create_service_without_session(PhraseService)

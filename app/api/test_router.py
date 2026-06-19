@@ -18,7 +18,7 @@ router = APIRouter(
 @router.post(
     "/t1_search",
     status_code=200,
-    response_model=list[str],
+    response_model=dict[str, dict],
     openapi_extra={
         "requestBody": {
             "required": True,

@@ -205,7 +205,7 @@ async def w5_load(
         PhraseLoadingService,
         Depends(get_phrase_loading_service_without_session),
     ],
-    batch_size: Annotated[int, Query(ge=1, le=2000)] = 2,
+    batch_size: Annotated[int, Query(ge=1, le=2000)] = 400,
 ) -> Any:
     """Trigger W5: load a batch of embedded phrases into Qdrant
 

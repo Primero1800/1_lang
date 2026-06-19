@@ -3,14 +3,37 @@ import base64
 import logging
 import re
 
+from qdrant_client.models import ScoredPoint
+
 from app.common.logging import log_decorator, logger
 from app.pyd.requests import SearchSettings, TagExclusionFilters
-from app.services.base import BaseService
+from app.repositories.phrase_vector_repository import PhraseVectorRepository
+from app.services.base import BaseDeps, BaseService
 from app.services.prompt_service import PromptService
+from app.uow import UnitOfWork
 
 
 class TestService(BaseService):
     """T1 search test service: vision → embed → Qdrant search pipeline"""
+
+    def __init__(
+        self,
+        base_deps: BaseDeps,
+        vector_repository: PhraseVectorRepository,
+        uow: UnitOfWork | None = None,
+    ) -> None:
+        """Initialize with shared infrastructure deps and Qdrant vector repository
+
+        :param:
+            base_deps: shared infrastructure dependencies
+            vector_repository: repository for Qdrant search and upsert operations
+            uow: optional request-scoped UnitOfWork session
+
+        :returns:
+            None
+        """
+        super().__init__(base_deps, uow)
+        self.vector_repository = vector_repository
 
     @log_decorator(level=logging.INFO)
     async def t1_search(
@@ -18,8 +41,8 @@ class TestService(BaseService):
         image_raw: bytes,
         filters: TagExclusionFilters,
         search_settings: SearchSettings,
-    ) -> list[str]:
-        """Orchestrate the full T1 pipeline: vision → embed → search → filter by mood
+    ) -> dict[str, dict]:
+        """Orchestrate the full T1 pipeline: vision → embed → search → filter by mood and gender
 
         :param:
             image_raw: raw bytes of the uploaded image
@@ -27,22 +50,44 @@ class TestService(BaseService):
             search_settings: target language and mood tone
 
         :returns:
-            phrases: flat list of matched variant strings
+            result: dict of {original: {tag: str, phrases: list[str]}}
         """
         # Step 1: extract gender and up to 3 observation phrases from the image
         gender, phrases = await self._t1_get_phrases(image_raw, lang=search_settings.lang.value)
         logger.info(f"[T1] step 1 — gender={gender}, extracted {len(phrases)} phrase(s): {phrases}")
         if not phrases:
-            return []
+            return {}
 
         # Step 2: embed phrases with search_query prefix
         vectors = await self._t1_embed_phrases(phrases)
         logger.info(f"[T1] step 2 — embedded {len(vectors)}/{len(phrases)} phrase(s)")
         if not vectors:
-            return []
+            return {}
 
-        # Steps 3–5: search → filter — coming soon
-        raise NotImplementedError
+        # Step 3: batch search in Qdrant filtered by lang and excluded tags
+        excluded_tags = [
+            tag for tag, excluded in {
+                "behavior": filters.not_behavior,
+                "appearance": filters.not_appearance,
+                "age": filters.not_age,
+                "mood": filters.not_mood,
+                "posture": filters.not_posture,
+                "hairstyle": filters.not_hairstyle,
+            }.items() if excluded
+        ]
+        results = await self.vector_repository.search_batch(
+            vectors=vectors,
+            lang=search_settings.lang.value,
+            excluded_tags=excluded_tags,
+        )
+        total = sum(len(r) for r in results)
+        logger.info(f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)")
+
+        # Step 4: extract variants by mood and gender, group by original
+        mood_key = search_settings.mood.value
+        output = self._t1_extract_variants(results, mood_key=mood_key, gender=gender)
+        logger.info(f"[T1] step 4 — {len(output)} unique original(s) in result")
+        return output
 
     @log_decorator(level=logging.DEBUG)
     async def _t1_get_phrases(self, image_raw: bytes, lang: str) -> tuple[str, list[str]]:
@@ -72,6 +117,37 @@ class TestService(BaseService):
         gender, phrases = self._parse_vision_phrases(raw)
         logger.info(f"[T1, step 1] gender={gender}, parsed {len(phrases)} phrase(s)")
         return gender, phrases[:3]
+
+    @staticmethod
+    def _t1_extract_variants(
+        results: list[list[ScoredPoint]],
+        mood_key: str,
+        gender: str,
+    ) -> dict[str, dict]:
+        """Extract mood+gender variants from Qdrant search results, grouped by original phrase
+
+        :param:
+            results: list of ScoredPoint lists from search_batch
+            mood_key: mood letter key ('A'–'E')
+            gender: 'male' or 'female'
+
+        :returns:
+            output: dict of {original: {tag: str, phrases: list[str]}}
+        """
+        output: dict[str, dict] = {}
+        for points in results:
+            for point in points:
+                if not point.payload:
+                    continue
+                original = point.payload.get("original")
+                tag = point.payload.get("tag")
+                variants = point.payload.get("variants", {})
+                if not original or original in output:
+                    continue
+                phrases = variants.get(mood_key, {}).get(gender, [])
+                if phrases:
+                    output[original] = {"tag": tag, "phrases": phrases}
+        return output
 
     @log_decorator(level=logging.DEBUG)
     async def _t1_embed_phrases(self, phrases: list[str]) -> list[list[float]]:
