@@ -58,36 +58,35 @@ class PhraseVectorRepository:
     async def search_batch(
         self,
         vectors: list[list[float]],
+        tags: list[str],
         lang: str,
-        excluded_tags: list[str],
         limit: int = 3,
     ) -> list[list[ScoredPoint]]:
-        """Search Qdrant for nearest neighbours for each vector, filtered by lang and excluded tags
+        """Search Qdrant for nearest neighbours for each vector, each filtered by lang and its own tag
 
         :param:
             vectors: list of query embedding vectors
+            tags: tag to search within for each vector (must match payload 'tag' field)
             lang: language to filter by (must match payload 'lang' field)
-            excluded_tags: tag values to exclude from results (payload 'tag' field)
             limit: maximum results per vector
 
         :returns:
             results: list of ScoredPoint lists, one per input vector
         """
-        query_filter = Filter(
-            must=[FieldCondition(key="lang", match=MatchValue(value=lang))],
-            must_not=[
-                FieldCondition(key="tag", match=MatchValue(value=tag))
-                for tag in excluded_tags
-            ] or None,
-        )
         requests = [
             QueryRequest(
                 query=vector,
-                filter=query_filter,
+                filter=Filter(
+                    must=[
+                        FieldCondition(key="lang", match=MatchValue(value=lang)),
+                        FieldCondition(key="tag", match=MatchValue(value=tag)),
+                    ]
+                ),
                 limit=limit,
+                score_threshold=settings.T1_SEARCH_MIN_SCORE,
                 with_payload=True,
                 with_vector=False,
             )
-            for vector in vectors
+            for vector, tag in zip(vectors, tags)
         ]
         return await self._client.search_batch(requests=requests)

@@ -54,6 +54,7 @@ class Settings(BaseSettings):
     QDRANT_MAIN_URL: str = ""
     QDRANT_MAIN_API_KEY: str = ""
     QDRANT_MAIN_UPSERT_CHUNK_SIZE: int = 100
+    T1_SEARCH_MIN_SCORE: float = 0.85
 
     VECTOR_DB_COLLECTION: str
     VECTOR_DB_VECTOR_SIZE: int = 1024

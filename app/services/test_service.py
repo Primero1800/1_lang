@@ -1,4 +1,3 @@
-import ast
 import base64
 import logging
 import re
@@ -52,33 +51,40 @@ class TestService(BaseService):
         :returns:
             result: dict of {original: {tag: str, phrases: list[str]}}
         """
-        # Step 1: extract gender and up to 3 observation phrases from the image
-        gender, phrases = await self._t1_get_phrases(image_raw, lang=search_settings.lang.value)
-        logger.info(f"[T1] step 1 — gender={gender}, extracted {len(phrases)} phrase(s): {phrases}")
-        if not phrases:
+        lang = search_settings.lang.value
+        all_tags = ["behavior", "appearance", "age", "mood", "posture", "hairstyle"]
+        filter_map = {
+            "behavior": filters.not_behavior,
+            "appearance": filters.not_appearance,
+            "age": filters.not_age,
+            "mood": filters.not_mood,
+            "posture": filters.not_posture,
+            "hairstyle": filters.not_hairstyle,
+        }
+        allowed_tags = [tag for tag in all_tags if not filter_map[tag]]
+        if not allowed_tags:
+            logger.warning("[T1] all tags restricted, returning message")
+            return {"message": PromptService.get_restricted_message(lang)}
+
+        # Step 1: extract gender and one phrase per allowed tag from the image
+        gender, tag_phrases = await self._t1_get_phrases(image_raw, lang=lang, allowed_tags=allowed_tags)
+        logger.info(f"[T1] step 1 — gender={gender}, extracted {len(tag_phrases)} phrase(s): {tag_phrases}")
+        if not tag_phrases:
             return {}
 
-        # Step 2: embed phrases with search_query prefix
-        vectors = await self._t1_embed_phrases(phrases)
-        logger.info(f"[T1] step 2 — embedded {len(vectors)}/{len(phrases)} phrase(s)")
-        if not vectors:
+        # Step 2: embed each phrase with search_query prefix
+        tag_vectors = await self._t1_embed_phrases(tag_phrases)
+        logger.info(f"[T1] step 2 — embedded {len(tag_vectors)}/{len(tag_phrases)} phrase(s)")
+        if not tag_vectors:
             return {}
 
-        # Step 3: batch search in Qdrant filtered by lang and excluded tags
-        excluded_tags = [
-            tag for tag, excluded in {
-                "behavior": filters.not_behavior,
-                "appearance": filters.not_appearance,
-                "age": filters.not_age,
-                "mood": filters.not_mood,
-                "posture": filters.not_posture,
-                "hairstyle": filters.not_hairstyle,
-            }.items() if excluded
-        ]
+        # Step 3: batch search — each vector searches within its own tag
+        tags = list(tag_vectors.keys())
+        vectors = list(tag_vectors.values())
         results = await self.vector_repository.search_batch(
             vectors=vectors,
-            lang=search_settings.lang.value,
-            excluded_tags=excluded_tags,
+            tags=tags,
+            lang=lang,
         )
         total = sum(len(r) for r in results)
         logger.info(f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)")
@@ -90,33 +96,35 @@ class TestService(BaseService):
         return output
 
     @log_decorator(level=logging.DEBUG)
-    async def _t1_get_phrases(self, image_raw: bytes, lang: str) -> tuple[str, list[str]]:
-        """Send image to Mistral vision and return detected gender and up to 3 observation phrases
+    async def _t1_get_phrases(
+        self,
+        image_raw: bytes,
+        lang: str,
+        allowed_tags: list[str],
+    ) -> tuple[str, dict[str, str]]:
+        """Send image to Mistral vision and return detected gender and one phrase per allowed tag
 
         :param:
             image_raw: raw image bytes
             lang: target language code ('ru' or 'en')
+            allowed_tags: tag keys to request observations for
 
         :returns:
             gender: 'male' or 'female' (defaults to 'male' if undetermined)
-            phrases: list of up to 3 observation phrase strings
+            tag_phrases: dict of {tag: observation phrase}
         """
         if not self.ai_client.supports_vision:
             logger.error("[T1, step 1] ai_client does not support vision")
-            return "male", []
-        try:
-            prompt = PromptService.get("t1_vision", lang)
-        except Exception as exc:
-            logger.error("[T1, step 1] no prompt for lang=%s", lang, exc_info=exc)
-            return "male", []
+            return "male", {}
+        prompt = PromptService.get_t1_vision_prompt(lang=lang, allowed_tags=allowed_tags)
         image_b64 = base64.b64encode(image_raw).decode()
         raw = await self.ai_client.vision_chat(images_b64=[image_b64], prompt=prompt)
         if not raw:
             logger.warning("[T1, step 1] vision returned empty response")
-            return "male", []
-        gender, phrases = self._parse_vision_phrases(raw)
-        logger.info(f"[T1, step 1] gender={gender}, parsed {len(phrases)} phrase(s)")
-        return gender, phrases[:3]
+            return "male", {}
+        gender, tag_phrases = self._parse_vision_phrases(raw)
+        logger.info(f"[T1, step 1] gender={gender}, parsed {len(tag_phrases)} phrase(s)")
+        return gender, tag_phrases
 
     @staticmethod
     def _t1_extract_variants(
@@ -146,39 +154,41 @@ class TestService(BaseService):
                     continue
                 phrases = variants.get(mood_key, {}).get(gender, [])
                 if phrases:
-                    output[original] = {"tag": tag, "phrases": phrases}
+                    output[original] = {"tag": tag, "score": round(point.score, 4), "phrases": phrases}
         return output
 
     @log_decorator(level=logging.DEBUG)
-    async def _t1_embed_phrases(self, phrases: list[str]) -> list[list[float]]:
-        """Embed observation phrases using Mistral search_query strategy
+    async def _t1_embed_phrases(self, tag_phrases: dict[str, str]) -> dict[str, list[float]]:
+        """Embed tagged observation phrases using Mistral search_query strategy
 
         :param:
-            phrases: list of observation phrase strings
+            tag_phrases: dict of {tag: observation phrase}
 
         :returns:
-            vectors: list of embedding vectors, one per phrase (failed phrases are skipped)
+            tag_vectors: dict of {tag: embedding vector}, preserving input order
         """
         if not self.ai_client.supports_embed:
             logger.error("[T1, step 2] ai_client does not support embed")
-            return []
+            return {}
+        tags = list(tag_phrases.keys())
+        phrases = list(tag_phrases.values())
         result = await self.ai_client.embed(phrases, task_type="query")
         if not result:
             logger.warning("[T1, step 2] embed returned empty result")
-            return []
+            return {}
         vectors = result if isinstance(result, list) and isinstance(result[0], list) else [result]
-        return vectors
+        return dict(zip(tags, vectors))
 
     @staticmethod
-    def _parse_vision_phrases(raw: str) -> tuple[str, list[str]]:
-        """Parse raw vision output as JSON object with gender and phrases
+    def _parse_vision_phrases(raw: str) -> tuple[str, dict[str, str]]:
+        """Parse raw vision output as JSON object with gender and per-tag phrases
 
         :param:
             raw: raw text response from the vision model
 
         :returns:
             gender: 'male' or 'female' (defaults to 'male' on parse failure)
-            phrases: list of phrase strings
+            tag_phrases: dict of {tag: phrase} parsed from the 'phrases' object
         """
         import json
         text = raw.strip()
@@ -190,8 +200,9 @@ class TestService(BaseService):
             gender = data.get("gender", "male")
             if gender not in ("male", "female"):
                 gender = "male"
-            phrases = [str(p).strip() for p in data.get("phrases", []) if p]
-            return gender, phrases
+            phrases = data.get("phrases", {})
+            if isinstance(phrases, dict):
+                return gender, {k: str(v).strip() for k, v in phrases.items() if v}
         except Exception as exc:
             logger.error("[T1, step 1] failed to parse vision output: %s", text[:300], exc_info=exc)
-        return "male", []
+        return "male", {}

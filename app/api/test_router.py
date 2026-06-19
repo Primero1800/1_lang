@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Any
+from typing import Annotated, Any, Union
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
@@ -18,7 +18,7 @@ router = APIRouter(
 @router.post(
     "/t1_search",
     status_code=200,
-    response_model=dict[str, dict],
+    response_model=dict[str, Any],
     openapi_extra={
         "requestBody": {
             "required": True,
