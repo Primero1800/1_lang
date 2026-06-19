@@ -32,6 +32,39 @@ def _make_phrase(phrase_id: int) -> MagicMock:
     return p
 
 
+# --- _fetch_batch ---
+
+
+@pytest.mark.asyncio
+async def test_fetch_batch_returns_empty_when_nothing_ready(
+    phrase_embedding_service: PhraseEmbeddingService,
+) -> None:
+    mock_uow = _make_mock_uow()
+    mock_uow.phrase_repository.get_batch_for_processing.return_value = []
+    phrase_embedding_service.uow_factory = mock_uow
+
+    result = await phrase_embedding_service._fetch_batch(batch_size=10)
+
+    assert result == []
+    mock_uow.phrase_repository.update_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_batch_returns_batch_and_marks_in_progress(
+    phrase_embedding_service: PhraseEmbeddingService,
+) -> None:
+    phrases = [_make_phrase(1), _make_phrase(2)]
+    mock_uow = _make_mock_uow()
+    mock_uow.phrase_repository.get_batch_for_processing.return_value = phrases
+    phrase_embedding_service.uow_factory = mock_uow
+
+    result = await phrase_embedding_service._fetch_batch(batch_size=10)
+
+    assert len(result) == 2
+    assert result[0].id == 1
+    mock_uow.phrase_repository.update_status.assert_called_once()
+
+
 # --- _call_embed ---
 
 

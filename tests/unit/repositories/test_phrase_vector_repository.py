@@ -38,7 +38,7 @@ async def test_bulk_upsert_empty_returns_zero(
 async def test_bulk_upsert_returns_count_on_success(
     vector_repo: PhraseVectorRepository, mock_vector_client: AsyncMock
 ) -> None:
-    mock_vector_client.upsert.return_value = MagicMock()  # non-None → success
+    mock_vector_client.upsert.return_value = MagicMock()
     points = [_make_point(i) for i in range(3)]
 
     count, failed_ids = await vector_repo.bulk_upsert(points)
@@ -88,10 +88,12 @@ async def test_search_batch_builds_one_request_per_vector(
 
 
 @pytest.mark.asyncio
-async def test_bulk_upsert_client_returns_none_adds_failed_ids(
+async def test_bulk_upsert_exception_adds_failed_ids(
     vector_repo: PhraseVectorRepository, mock_vector_client: AsyncMock
 ) -> None:
-    mock_vector_client.upsert.return_value = None
+    from app.common.exceptions import VectorDBException
+
+    mock_vector_client.upsert.side_effect = VectorDBException("upsert failed")
     points = [_make_point(1), _make_point(2)]
 
     count, failed_ids = await vector_repo.bulk_upsert(points)

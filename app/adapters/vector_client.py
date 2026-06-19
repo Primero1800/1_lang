@@ -14,6 +14,7 @@ from qdrant_client.models import (
     PayloadSchemaType,
 )
 
+from app.common.exceptions import VectorDBException
 from app.common.logging import log_decorator, logger
 from app.core.config import settings
 
@@ -304,7 +305,9 @@ class QdrantVectorClient(VectorClientAbstract):
         except Exception as exc:
             logger.error(f"Error upserting points to '{collection_name}'", exc_info=exc)
             if raise_exception:
-                raise
+                raise VectorDBException(
+                    f"Qdrant upsert failed for '{collection_name}'"
+                ) from exc
             return None
 
     @log_decorator(level=logging.DEBUG)

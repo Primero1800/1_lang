@@ -59,6 +59,47 @@ def _w3_raw(phrase_ids: list[int]) -> str:
     return json.dumps({"results": results})
 
 
+# --- _call_mistral ---
+
+
+@pytest.mark.asyncio
+async def test_call_mistral_no_chat_support_returns_none(
+    phrase_translation_service: PhraseTranslationService,
+) -> None:
+    phrase_translation_service.ai_client.supports_chat = False
+    result = await phrase_translation_service._call_mistral(
+        batch=[_make_phrase(1)], variants={}, lang="ru"
+    )
+    assert result is None
+
+
+@pytest.mark.asyncio
+async def test_call_mistral_unknown_lang_returns_none(
+    phrase_translation_service: PhraseTranslationService,
+) -> None:
+    phrase_translation_service.ai_client.supports_chat = True
+    result = await phrase_translation_service._call_mistral(
+        batch=[_make_phrase(1)], variants={}, lang="xx"
+    )
+    assert result is None
+    phrase_translation_service.ai_client.chat.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_call_mistral_success_returns_raw(
+    phrase_translation_service: PhraseTranslationService,
+) -> None:
+    phrase_translation_service.ai_client.supports_chat = True
+    phrase_translation_service.ai_client.chat = AsyncMock(
+        return_value='{"results": []}'
+    )
+    result = await phrase_translation_service._call_mistral(
+        batch=[_make_phrase(1)], variants={1: _variants()}, lang="ru"
+    )
+    assert result == '{"results": []}'
+    phrase_translation_service.ai_client.chat.assert_called_once()
+
+
 # --- _parse_w3_response ---
 
 

@@ -78,6 +78,45 @@ def test_parse_vision_phrases_strips_code_fence() -> None:
     assert tag_phrases == {"behavior": "looking focused"}
 
 
+# --- _t1_get_phrases ---
+
+
+@pytest.mark.asyncio
+async def test_t1_get_phrases_no_vision_support_returns_empty(
+    test_service: TestService,
+) -> None:
+    test_service.ai_client.supports_vision = False
+    gender, phrases = await test_service._t1_get_phrases(b"img", "ru", ["behavior"])
+    assert gender == "male"
+    assert phrases == {}
+
+
+@pytest.mark.asyncio
+async def test_t1_get_phrases_vision_returns_none_returns_empty(
+    test_service: TestService,
+) -> None:
+    test_service.ai_client.supports_vision = True
+    test_service.ai_client.vision_chat = AsyncMock(return_value=None)
+    gender, phrases = await test_service._t1_get_phrases(b"img", "ru", ["behavior"])
+    assert gender == "male"
+    assert phrases == {}
+
+
+@pytest.mark.asyncio
+async def test_t1_get_phrases_success(test_service: TestService) -> None:
+    import json
+
+    test_service.ai_client.supports_vision = True
+    test_service.ai_client.vision_chat = AsyncMock(
+        return_value=json.dumps(
+            {"gender": "female", "phrases": {"behavior": "typing fast"}}
+        )
+    )
+    gender, phrases = await test_service._t1_get_phrases(b"img", "ru", ["behavior"])
+    assert gender == "female"
+    assert phrases == {"behavior": "typing fast"}
+
+
 # --- _t1_extract_variants ---
 
 
