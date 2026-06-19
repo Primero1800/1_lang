@@ -10,6 +10,7 @@ from qdrant_client.models import (
     Filter,
     Distance,
     UpdateResult,
+    QueryRequest,
 )
 
 from app.common.logging import log_decorator, logger
@@ -107,6 +108,24 @@ class VectorClientAbstract(abc.ABC):
 
         :returns:
             points: list of ScoredPoint results ordered by similarity
+        """
+
+    @abc.abstractmethod
+    async def search_batch(
+        self,
+        requests: list[QueryRequest],
+        collection_name: str | None = None,
+        raise_exception: bool = False,
+    ) -> list[list[ScoredPoint]]:
+        """Run multiple vector searches in a single request
+
+        :param:
+            requests: list of QueryRequest objects, one per search vector
+            collection_name: target collection name; defaults to configured collection
+            raise_exception: whether to re-raise exceptions instead of returning []
+
+        :returns:
+            results: list of ScoredPoint lists, one per input request
         """
 
 
@@ -293,6 +312,38 @@ class QdrantVectorClient(VectorClientAbstract):
         except Exception as exc:
             logger.error(
                 f"Error during vector search in '{collection_name or settings.VECTOR_DB_COLLECTION}'",
+                exc_info=exc,
+            )
+            if raise_exception:
+                raise
+            return []
+
+    @log_decorator(level=logging.DEBUG)
+    async def search_batch(
+        self,
+        requests: list[QueryRequest],
+        collection_name: str | None = None,
+        raise_exception: bool = False,
+    ) -> list[list[ScoredPoint]]:
+        """Run multiple vector searches in a single Qdrant request
+
+        :param:
+            requests: list of QueryRequest objects, one per search vector
+            collection_name: target collection name; defaults to configured collection
+            raise_exception: whether to re-raise exceptions instead of returning []
+
+        :returns:
+            results: list of ScoredPoint lists, one per input request
+        """
+        try:
+            responses = await self._client.query_batch_points(
+                collection_name=collection_name or settings.VECTOR_DB_COLLECTION,
+                requests=requests,
+            )
+            return [r.points for r in responses]
+        except Exception as exc:
+            logger.error(
+                f"Error during batch search in '{collection_name or settings.VECTOR_DB_COLLECTION}'",
                 exc_info=exc,
             )
             if raise_exception:

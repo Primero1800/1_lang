@@ -7,11 +7,11 @@ from app.adapters.vector_client import VectorClientAbstract
 from app.dependencies.infrastructure import (
     get_ai_client,
     get_groq_client,
-    get_phrase_loading_repository,
+    get_phrase_vector_repository,
     get_vector_client,
     get_vector_client_main,
 )
-from app.repositories.phrase_loading_repository import PhraseLoadingRepository
+from app.repositories.phrase_vector_repository import PhraseVectorRepository
 from app.services.base import BaseDeps, BaseService
 from app.services.health_check_service import HealthCheckService
 from app.services.phrase_data_service import PhraseDataService
@@ -117,7 +117,7 @@ get_phrase_embedding_service_without_session = _create_service_without_session(
 async def get_phrase_loading_service_without_session(
     base_deps: Annotated[BaseDeps, Depends(get_base_deps)],
     loading_repository: Annotated[
-        PhraseLoadingRepository, Depends(get_phrase_loading_repository)
+        PhraseVectorRepository, Depends(get_phrase_vector_repository)
     ],
 ) -> PhraseLoadingService:
     """FastAPI dependency for PhraseLoadingService with injected Qdrant repository

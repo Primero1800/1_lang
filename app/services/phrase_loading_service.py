@@ -9,7 +9,7 @@ from app.common.logging import log_decorator, logger
 from app.models.phrase_data import PhraseData
 from app.models.phrase_embeddings import PhraseEmbedding
 from app.models.phrases import Phrase
-from app.repositories.phrase_loading_repository import PhraseLoadingRepository
+from app.repositories.phrase_vector_repository import PhraseVectorRepository
 from app.services.base import BaseDeps, BaseService
 from app.uow import UnitOfWork
 
@@ -20,7 +20,7 @@ class PhraseLoadingService(BaseService):
     def __init__(
         self,
         base_deps: BaseDeps,
-        loading_repository: PhraseLoadingRepository,
+        loading_repository: PhraseVectorRepository,
         uow: UnitOfWork | None = None,
     ) -> None:
         """Initialize with shared infrastructure deps and a Qdrant loading repository

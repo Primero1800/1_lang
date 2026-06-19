@@ -29,51 +29,79 @@ class TestService(BaseService):
         :returns:
             phrases: flat list of matched variant strings
         """
-        # Step 1: extract up to 3 observation phrases from the image
-        phrases = await self._t1_get_phrases(image_raw, lang=search_settings.lang.value)
-        logger.info(f"[T1] step 1 — extracted {len(phrases)} phrase(s): {phrases}")
+        # Step 1: extract gender and up to 3 observation phrases from the image
+        gender, phrases = await self._t1_get_phrases(image_raw, lang=search_settings.lang.value)
+        logger.info(f"[T1] step 1 — gender={gender}, extracted {len(phrases)} phrase(s): {phrases}")
         if not phrases:
             return []
 
-        # Steps 2–5: embed → search → filter — coming soon
+        # Step 2: embed phrases with search_query prefix
+        vectors = await self._t1_embed_phrases(phrases)
+        logger.info(f"[T1] step 2 — embedded {len(vectors)}/{len(phrases)} phrase(s)")
+        if not vectors:
+            return []
+
+        # Steps 3–5: search → filter — coming soon
         raise NotImplementedError
 
     @log_decorator(level=logging.DEBUG)
-    async def _t1_get_phrases(self, image_raw: bytes, lang: str) -> list[str]:
-        """Send image to Mistral vision and return up to 3 observation phrases
+    async def _t1_get_phrases(self, image_raw: bytes, lang: str) -> tuple[str, list[str]]:
+        """Send image to Mistral vision and return detected gender and up to 3 observation phrases
 
         :param:
             image_raw: raw image bytes
             lang: target language code ('ru' or 'en')
 
         :returns:
+            gender: 'male' or 'female' (defaults to 'male' if undetermined)
             phrases: list of up to 3 observation phrase strings
         """
         if not self.ai_client.supports_vision:
             logger.error("[T1, step 1] ai_client does not support vision")
-            return []
+            return "male", []
         try:
             prompt = PromptService.get("t1_vision", lang)
         except Exception as exc:
             logger.error("[T1, step 1] no prompt for lang=%s", lang, exc_info=exc)
-            return []
+            return "male", []
         image_b64 = base64.b64encode(image_raw).decode()
         raw = await self.ai_client.vision_chat(images_b64=[image_b64], prompt=prompt)
         if not raw:
             logger.warning("[T1, step 1] vision returned empty response")
+            return "male", []
+        gender, phrases = self._parse_vision_phrases(raw)
+        logger.info(f"[T1, step 1] gender={gender}, parsed {len(phrases)} phrase(s)")
+        return gender, phrases[:3]
+
+    @log_decorator(level=logging.DEBUG)
+    async def _t1_embed_phrases(self, phrases: list[str]) -> list[list[float]]:
+        """Embed observation phrases using Mistral search_query strategy
+
+        :param:
+            phrases: list of observation phrase strings
+
+        :returns:
+            vectors: list of embedding vectors, one per phrase (failed phrases are skipped)
+        """
+        if not self.ai_client.supports_embed:
+            logger.error("[T1, step 2] ai_client does not support embed")
             return []
-        phrases = self._parse_vision_phrases(raw)
-        logger.info(f"[T1, step 1] parsed {len(phrases)} phrase(s) from vision output")
-        return phrases[:3]
+        result = await self.ai_client.embed(phrases, task_type="query")
+        if not result:
+            logger.warning("[T1, step 2] embed returned empty result")
+            return []
+        vectors = result if isinstance(result, list) and isinstance(result[0], list) else [result]
+        return vectors
 
     @staticmethod
-    def _parse_vision_phrases(raw: str) -> list[str]:
-        """Parse raw vision output as a flat JSON list of phrase strings
+    def _parse_vision_phrases(raw: str) -> tuple[str, list[str]]:
+        """Parse raw vision output as JSON object with gender and phrases
 
         :param:
             raw: raw text response from the vision model
 
         :returns:
+            gender: 'male' or 'female' (defaults to 'male' on parse failure)
             phrases: list of phrase strings
         """
         import json
@@ -83,8 +111,11 @@ class TestService(BaseService):
             text = match.group(1).strip()
         try:
             data = json.loads(text)
-            if isinstance(data, list):
-                return [str(p).strip() for p in data if p]
+            gender = data.get("gender", "male")
+            if gender not in ("male", "female"):
+                gender = "male"
+            phrases = [str(p).strip() for p in data.get("phrases", []) if p]
+            return gender, phrases
         except Exception as exc:
             logger.error("[T1, step 1] failed to parse vision output: %s", text[:300], exc_info=exc)
-        return []
+        return "male", []
