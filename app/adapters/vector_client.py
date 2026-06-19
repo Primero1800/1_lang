@@ -200,6 +200,16 @@ class QdrantVectorClient(VectorClientAbstract):
             field_name="tag",
             field_schema=PayloadSchemaType.KEYWORD,
         )
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="original",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="original",
+            field_schema=PayloadSchemaType.TEXT,
+        )
         logger.debug(f"Payload indexes created for collection '{collection_name}'")
 
     async def stop(self) -> None:

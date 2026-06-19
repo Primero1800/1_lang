@@ -154,7 +154,7 @@ class TestService(BaseService):
                     continue
                 phrases = variants.get(mood_key, {}).get(gender, [])
                 if phrases:
-                    output[original] = {"tag": tag, "score": round(point.score, 4), "phrases": phrases}
+                    output[original] = {"tag": tag, "score": round(point.score, 4), "gender": gender, "phrases": phrases}
         return output
 
     @log_decorator(level=logging.DEBUG)
