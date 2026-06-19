@@ -24,9 +24,9 @@ class Phrase(Base):
         comment="Тег наблюдения",
     )
     lang: Mapped[LangEnum] = mapped_column(
-        String(2),
+        SqlEnum(LangEnum),
         default=LangEnum.RU,
-        server_default=text(f"'{LangEnum.RU.value}'"),
+        server_default=text(f"'{LangEnum.RU.name}'"),
         comment="Язык фразы",
     )
     status: Mapped[PhraseStatusEnum] = mapped_column(

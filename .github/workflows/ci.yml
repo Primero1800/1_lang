@@ -43,6 +43,7 @@ jobs:
       QDRANT_MAIN_ENABLED: "false"
       QDRANT_MAIN_URL: ""
       QDRANT_MAIN_API_KEY: ""
+      T1_SEARCH_MIN_SCORE: 0.85
       VECTOR_DB_COLLECTION: test
       VECTOR_DB_VECTOR_SIZE: 1024
 

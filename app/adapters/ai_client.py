@@ -96,7 +96,7 @@ class AIClientAbstract(abc.ABC):
         text: str | list[str],
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
-    ) -> list[float] | None:
+    ) -> list[float] | list[list[float]] | None:
         """Compute embeddings for one or more text inputs
 
         :param:
@@ -240,7 +240,7 @@ class MistralClient(AIClientAbstract):
         text: str | list[str],
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
-    ) -> list[float] | None:
+    ) -> list[float] | list[list[float]] | None:
         """Compute Mistral embeddings for one or more text inputs
 
         :param:
@@ -473,7 +473,7 @@ class GroqClient(AIClientAbstract):
         text: str | list[str],
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
-    ) -> list[float] | None:
+    ) -> list[float] | list[list[float]] | None:
         """Not implemented: Groq does not support embeddings
 
         :param:

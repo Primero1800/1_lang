@@ -10,8 +10,11 @@ from qdrant_client.models import (
     Filter,
     Distance,
     UpdateResult,
+    QueryRequest,
+    PayloadSchemaType,
 )
 
+from app.common.exceptions import VectorDBException
 from app.common.logging import log_decorator, logger
 from app.core.config import settings
 
@@ -109,6 +112,24 @@ class VectorClientAbstract(abc.ABC):
             points: list of ScoredPoint results ordered by similarity
         """
 
+    @abc.abstractmethod
+    async def search_batch(
+        self,
+        requests: list[QueryRequest],
+        collection_name: str | None = None,
+        raise_exception: bool = False,
+    ) -> list[list[ScoredPoint]]:
+        """Run multiple vector searches in a single request
+
+        :param:
+            requests: list of QueryRequest objects, one per search vector
+            collection_name: target collection name; defaults to configured collection
+            raise_exception: whether to re-raise exceptions instead of returning []
+
+        :returns:
+            results: list of ScoredPoint lists, one per input request
+        """
+
 
 class QdrantVectorClient(VectorClientAbstract):
     """Qdrant vector database client using the async gRPC/HTTP AsyncQdrantClient"""
@@ -146,7 +167,7 @@ class QdrantVectorClient(VectorClientAbstract):
             )
 
     async def start(self) -> None:
-        """Ensure the default collection exists, creating it if necessary
+        """Ensure the default collection exists, creating it with indexes if necessary
 
         :raise:
             Exception: re-raised if collection creation fails unexpectedly
@@ -157,10 +178,40 @@ class QdrantVectorClient(VectorClientAbstract):
         try:
             if not await self.collection_exists(settings.VECTOR_DB_COLLECTION):
                 await self.create_collection(settings.VECTOR_DB_COLLECTION)
+                await self._create_indexes()
         except Exception as exc:
-            logger.error("Unexpected error while collection creating", exc_info=exc)
+            logger.error("Unexpected error while initializing collection", exc_info=exc)
             raise exc
         logger.debug("Qdrant vector client wrapper ready.")
+
+    async def _create_indexes(self) -> None:
+        """Create keyword payload indexes on lang and tag fields for the default collection
+
+        :returns:
+            None
+        """
+        collection_name = settings.VECTOR_DB_COLLECTION
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="lang",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="tag",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="original",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="original",
+            field_schema=PayloadSchemaType.TEXT,
+        )
+        logger.debug(f"Payload indexes created for collection '{collection_name}'")
 
     async def stop(self) -> None:
         """Close the underlying Qdrant connection pool
@@ -254,7 +305,9 @@ class QdrantVectorClient(VectorClientAbstract):
         except Exception as exc:
             logger.error(f"Error upserting points to '{collection_name}'", exc_info=exc)
             if raise_exception:
-                raise
+                raise VectorDBException(
+                    f"Qdrant upsert failed for '{collection_name}'"
+                ) from exc
             return None
 
     @log_decorator(level=logging.DEBUG)
@@ -293,6 +346,38 @@ class QdrantVectorClient(VectorClientAbstract):
         except Exception as exc:
             logger.error(
                 f"Error during vector search in '{collection_name or settings.VECTOR_DB_COLLECTION}'",
+                exc_info=exc,
+            )
+            if raise_exception:
+                raise
+            return []
+
+    @log_decorator(level=logging.DEBUG)
+    async def search_batch(
+        self,
+        requests: list[QueryRequest],
+        collection_name: str | None = None,
+        raise_exception: bool = False,
+    ) -> list[list[ScoredPoint]]:
+        """Run multiple vector searches in a single Qdrant request
+
+        :param:
+            requests: list of QueryRequest objects, one per search vector
+            collection_name: target collection name; defaults to configured collection
+            raise_exception: whether to re-raise exceptions instead of returning []
+
+        :returns:
+            results: list of ScoredPoint lists, one per input request
+        """
+        try:
+            responses = await self._client.query_batch_points(
+                collection_name=collection_name or settings.VECTOR_DB_COLLECTION,
+                requests=requests,
+            )
+            return [r.points for r in responses]
+        except Exception as exc:
+            logger.error(
+                f"Error during batch search in '{collection_name or settings.VECTOR_DB_COLLECTION}'",
                 exc_info=exc,
             )
             if raise_exception:

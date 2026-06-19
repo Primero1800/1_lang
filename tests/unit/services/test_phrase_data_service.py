@@ -47,6 +47,42 @@ def _w2_raw(phrase_ids: list[int]) -> str:
     return json.dumps({"results": results})
 
 
+# --- _fetch_batch ---
+
+
+@pytest.mark.asyncio
+async def test_fetch_batch_returns_empty_when_nothing_ready(
+    phrase_data_service: PhraseDataService,
+) -> None:
+    mock_uow = _make_mock_uow()
+    mock_uow.phrase_repository.get_first_for_processing.return_value = None
+    phrase_data_service.uow_factory = mock_uow
+
+    result = await phrase_data_service._fetch_batch(batch_size=5)
+
+    assert result == []
+    mock_uow.phrase_repository.get_batch_for_processing.assert_not_called()
+    mock_uow.phrase_repository.update_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_batch_returns_batch_and_marks_in_progress(
+    phrase_data_service: PhraseDataService,
+) -> None:
+    first = _make_phrase(1)
+    rest = [_make_phrase(2), _make_phrase(3)]
+    mock_uow = _make_mock_uow()
+    mock_uow.phrase_repository.get_first_for_processing.return_value = first
+    mock_uow.phrase_repository.get_batch_for_processing.return_value = rest
+    phrase_data_service.uow_factory = mock_uow
+
+    result = await phrase_data_service._fetch_batch(batch_size=5)
+
+    assert len(result) == 3
+    assert result[0].id == 1
+    mock_uow.phrase_repository.update_status.assert_called_once()
+
+
 # --- _parse_w2_response ---
 
 

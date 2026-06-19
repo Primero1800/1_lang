@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 from qdrant_client.models import PointStruct
 
 from app.services.base import BaseDeps
-from app.repositories.phrase_loading_repository import PhraseLoadingRepository
+from app.repositories.phrase_vector_repository import PhraseVectorRepository
 from app.services.phrase_loading_service import PhraseLoadingService
 
 
@@ -16,7 +16,7 @@ def phrase_loading_service() -> PhraseLoadingService:
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
     base_deps.vector_client_main = MagicMock()
-    loading_repository = MagicMock(spec=PhraseLoadingRepository)
+    loading_repository = MagicMock(spec=PhraseVectorRepository)
     return PhraseLoadingService(
         base_deps=base_deps, loading_repository=loading_repository
     )
@@ -30,6 +30,16 @@ def _make_mock_uow():
     return mock_uow
 
 
+def _make_full_mock_uow():
+    mock_uow = AsyncMock()
+    mock_uow.phrase_repository = AsyncMock()
+    mock_uow.phrase_embedding_repository = AsyncMock()
+    mock_uow.phrase_data_repository = AsyncMock()
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    return mock_uow
+
+
 def _make_phrase(phrase_id: int) -> MagicMock:
     p = MagicMock()
     p.id = phrase_id
@@ -37,6 +47,57 @@ def _make_phrase(phrase_id: int) -> MagicMock:
     p.tag = "behavior"
     p.lang = "ru"
     return p
+
+
+# --- _fetch_batch ---
+
+
+@pytest.mark.asyncio
+async def test_fetch_batch_returns_empty_when_nothing_ready(
+    phrase_loading_service: PhraseLoadingService,
+) -> None:
+    mock_uow = _make_full_mock_uow()
+    mock_uow.phrase_repository.get_batch_for_processing.return_value = []
+    phrase_loading_service.uow_factory = mock_uow
+
+    batch, embeddings_map, variants_map = await phrase_loading_service._fetch_batch(
+        batch_size=5
+    )
+
+    assert batch == []
+    assert embeddings_map == {}
+    assert variants_map == {}
+    mock_uow.phrase_repository.update_status.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_fetch_batch_returns_maps_and_marks_in_progress(
+    phrase_loading_service: PhraseLoadingService,
+) -> None:
+    phrases = [_make_phrase(1), _make_phrase(2)]
+
+    emb1 = MagicMock()
+    emb1.phrase_id = 1
+    emb1.embedding = [0.1, 0.2]
+
+    var1 = MagicMock()
+    var1.phrase_id = 1
+    var1.variants = {"A": {}}
+
+    mock_uow = _make_full_mock_uow()
+    mock_uow.phrase_repository.get_batch_for_processing.return_value = phrases
+    mock_uow.phrase_embedding_repository.get_by_phrase_ids.return_value = [emb1]
+    mock_uow.phrase_data_repository.get_by_phrase_ids.return_value = [var1]
+    phrase_loading_service.uow_factory = mock_uow
+
+    batch, embeddings_map, variants_map = await phrase_loading_service._fetch_batch(
+        batch_size=5
+    )
+
+    assert len(batch) == 2
+    assert embeddings_map == {1: [0.1, 0.2]}
+    assert variants_map == {1: {"A": {}}}
+    mock_uow.phrase_repository.update_status.assert_called_once()
 
 
 # --- _build_points ---
