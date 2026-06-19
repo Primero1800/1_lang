@@ -11,6 +11,7 @@ from qdrant_client.models import (
     Distance,
     UpdateResult,
     QueryRequest,
+    PayloadSchemaType,
 )
 
 from app.common.logging import log_decorator, logger
@@ -165,7 +166,7 @@ class QdrantVectorClient(VectorClientAbstract):
             )
 
     async def start(self) -> None:
-        """Ensure the default collection exists, creating it if necessary
+        """Ensure the default collection exists, creating it with indexes if necessary
 
         :raise:
             Exception: re-raised if collection creation fails unexpectedly
@@ -176,10 +177,30 @@ class QdrantVectorClient(VectorClientAbstract):
         try:
             if not await self.collection_exists(settings.VECTOR_DB_COLLECTION):
                 await self.create_collection(settings.VECTOR_DB_COLLECTION)
+                await self._create_indexes()
         except Exception as exc:
-            logger.error("Unexpected error while collection creating", exc_info=exc)
+            logger.error("Unexpected error while initializing collection", exc_info=exc)
             raise exc
         logger.debug("Qdrant vector client wrapper ready.")
+
+    async def _create_indexes(self) -> None:
+        """Create keyword payload indexes on lang and tag fields for the default collection
+
+        :returns:
+            None
+        """
+        collection_name = settings.VECTOR_DB_COLLECTION
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="lang",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        await self._client.create_payload_index(
+            collection_name=collection_name,
+            field_name="tag",
+            field_schema=PayloadSchemaType.KEYWORD,
+        )
+        logger.debug(f"Payload indexes created for collection '{collection_name}'")
 
     async def stop(self) -> None:
         """Close the underlying Qdrant connection pool
