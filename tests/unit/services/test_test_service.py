@@ -48,7 +48,10 @@ def _make_scored_point(
 
 def test_parse_vision_phrases_valid_json() -> None:
     raw = json.dumps(
-        {"gender": "female", "phrases": {"behavior": "typing fast", "appearance": "neat"}}
+        {
+            "gender": "female",
+            "phrases": {"behavior": "typing fast", "appearance": "neat"},
+        }
     )
     gender, tag_phrases = TestService._parse_vision_phrases(raw)
     assert gender == "female"
@@ -90,7 +93,9 @@ def test_t1_extract_variants_basic() -> None:
 def test_t1_extract_variants_deduplicates_originals() -> None:
     point1 = _make_scored_point(1, "original_1", "behavior", score=0.9)
     point2 = _make_scored_point(2, "original_1", "mood", score=0.8)
-    output = TestService._t1_extract_variants([[point1, point2]], mood_key="C", gender="male")
+    output = TestService._t1_extract_variants(
+        [[point1, point2]], mood_key="C", gender="male"
+    )
     assert len(output) == 1
     assert output["original_1"]["tag"] == "behavior"
 
@@ -119,7 +124,9 @@ async def test_t1_embed_phrases_no_embed_support(test_service: TestService) -> N
 
 
 @pytest.mark.asyncio
-async def test_t1_embed_phrases_returns_empty_on_none_result(test_service: TestService) -> None:
+async def test_t1_embed_phrases_returns_empty_on_none_result(
+    test_service: TestService,
+) -> None:
     test_service.ai_client.supports_embed = True
     test_service.ai_client.embed = AsyncMock(return_value=None)
     result = await test_service._t1_embed_phrases({"behavior": "typing fast"})
@@ -141,7 +148,9 @@ async def test_t1_embed_phrases_success(test_service: TestService) -> None:
 
 
 @pytest.mark.asyncio
-async def test_t1_search_all_tags_restricted_returns_message(test_service: TestService) -> None:
+async def test_t1_search_all_tags_restricted_returns_message(
+    test_service: TestService,
+) -> None:
     filters = TagExclusionFilters(
         not_behavior=True,
         not_appearance=True,
@@ -164,7 +173,9 @@ async def test_t1_search_empty_phrases_returns_empty(
         test_service, "_t1_get_phrases", new=AsyncMock(return_value=("male", {}))
     )
     result = await test_service.t1_search(
-        image_raw=b"img", filters=TagExclusionFilters(), search_settings=SearchSettings()
+        image_raw=b"img",
+        filters=TagExclusionFilters(),
+        search_settings=SearchSettings(),
     )
     assert result == {}
 
@@ -182,7 +193,9 @@ async def test_t1_search_empty_vectors_returns_empty(
         test_service, "_t1_embed_phrases", new=AsyncMock(return_value={})
     )
     result = await test_service.t1_search(
-        image_raw=b"img", filters=TagExclusionFilters(), search_settings=SearchSettings()
+        image_raw=b"img",
+        filters=TagExclusionFilters(),
+        search_settings=SearchSettings(),
     )
     assert result == {}
 
@@ -202,7 +215,9 @@ async def test_t1_search_success(test_service: TestService, mocker) -> None:
     )
     test_service.vector_repository.search_batch = AsyncMock(return_value=[[point]])
     result = await test_service.t1_search(
-        image_raw=b"img", filters=TagExclusionFilters(), search_settings=SearchSettings()
+        image_raw=b"img",
+        filters=TagExclusionFilters(),
+        search_settings=SearchSettings(),
     )
     assert "original_1" in result
     test_service.vector_repository.search_batch.assert_called_once()

@@ -12,7 +12,12 @@ async def test_t1_search_success(async_client: AsyncClient) -> None:
 
     mock_service = AsyncMock()
     mock_service.t1_search.return_value = {
-        "original_1": {"tag": "behavior", "score": 0.95, "gender": "male", "phrases": ["phrase_1"]}
+        "original_1": {
+            "tag": "behavior",
+            "score": 0.95,
+            "gender": "male",
+            "phrases": ["phrase_1"],
+        }
     }
     app.dependency_overrides[get_test_service_without_session] = lambda: mock_service
 
@@ -28,7 +33,9 @@ async def test_t1_search_success(async_client: AsyncClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_t1_search_vector_db_exception_returns_503(async_client: AsyncClient) -> None:
+async def test_t1_search_vector_db_exception_returns_503(
+    async_client: AsyncClient,
+) -> None:
     from app.main import app
     from app.common.exceptions import VectorDBException
     from app.dependencies.services import get_test_service_without_session
