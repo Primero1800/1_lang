@@ -224,7 +224,9 @@ class PromptService:
             prompt: complete prompt string with per-tag instructions and JSON example
         """
         labels = _TAG_LABELS.get(lang, _TAG_LABELS["en"])
-        tag_lines = "\n".join(f"- {labels.get(tag, tag)} ({tag})" for tag in allowed_tags)
+        tag_lines = "\n".join(
+            f"- {labels.get(tag, tag)} ({tag})" for tag in allowed_tags
+        )
         example = _json.dumps(
             {"gender": "male", "phrases": {tag: "..." for tag in allowed_tags}},
             ensure_ascii=False,

@@ -16,9 +16,9 @@ def phrase_loading_service() -> PhraseLoadingService:
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
     base_deps.vector_client_main = MagicMock()
-    vector_repository = MagicMock(spec=PhraseVectorRepository)
+    loading_repository = MagicMock(spec=PhraseVectorRepository)
     return PhraseLoadingService(
-        base_deps=base_deps, vector_repository=vector_repository
+        base_deps=base_deps, loading_repository=loading_repository
     )
 
 
@@ -120,7 +120,7 @@ async def test_w5_load_success(
             )
         ),
     )
-    phrase_loading_service.vector_repository.bulk_upsert = AsyncMock(
+    phrase_loading_service.loading_repository.bulk_upsert = AsyncMock(
         return_value=(2, set())
     )
 
@@ -151,7 +151,7 @@ async def test_w5_load_upsert_returns_zero_all_failed(
             )
         ),
     )
-    phrase_loading_service.vector_repository.bulk_upsert = AsyncMock(
+    phrase_loading_service.loading_repository.bulk_upsert = AsyncMock(
         return_value=(0, {1, 2})
     )
 
@@ -181,7 +181,7 @@ async def test_w5_load_partial_build_failure(
             )
         ),
     )
-    phrase_loading_service.vector_repository.bulk_upsert = AsyncMock(
+    phrase_loading_service.loading_repository.bulk_upsert = AsyncMock(
         return_value=(2, set())
     )
 

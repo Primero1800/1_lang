@@ -1,7 +1,14 @@
 import logging
 
 from qdrant_client.http.exceptions import ResponseHandlingException, UnexpectedResponse
-from qdrant_client.models import FieldCondition, Filter, MatchValue, PointStruct, QueryRequest, ScoredPoint
+from qdrant_client.models import (
+    FieldCondition,
+    Filter,
+    MatchValue,
+    PointStruct,
+    QueryRequest,
+    ScoredPoint,
+)
 
 from app.adapters.vector_client import VectorClientAbstract
 from app.common.logging import log_decorator, logger
@@ -38,14 +45,16 @@ class PhraseVectorRepository:
         upserted = 0
         failed_ids: set[int] = set()
         for i in range(0, len(points), settings.QDRANT_MAIN_UPSERT_CHUNK_SIZE):
-            chunk = points[i: i + settings.QDRANT_MAIN_UPSERT_CHUNK_SIZE]
+            chunk = points[i : i + settings.QDRANT_MAIN_UPSERT_CHUNK_SIZE]
             try:
                 result = await self._client.upsert(
                     collection_name=settings.VECTOR_DB_COLLECTION,
                     points=chunk,
                 )
             except (UnexpectedResponse, ResponseHandlingException) as e:
-                logger.error(f"[W5, loading] Qdrant upsert chunk {i}–{i + len(chunk)} failed: {e}")
+                logger.error(
+                    f"[W5, loading] Qdrant upsert chunk {i}–{i + len(chunk)} failed: {e}"
+                )
                 failed_ids.update(p.id for p in chunk)  # type: ignore[misc]
                 continue
             if result is not None:

@@ -100,10 +100,21 @@ get_health_check_service_without_session = _create_service_without_session(
 
 async def get_test_service_without_session(
     base_deps: Annotated[BaseDeps, Depends(get_base_deps)],
-    vector_repository: Annotated[PhraseVectorRepository, Depends(get_phrase_vector_repository)],
+    vector_repository: Annotated[
+        PhraseVectorRepository, Depends(get_phrase_vector_repository)
+    ],
 ) -> TestService:
-    """FastAPI dependency for TestService with injected Qdrant vector repository"""
+    """FastAPI dependency for TestService with injected Qdrant vector repository
+
+    :param:
+        base_deps: shared infrastructure dependencies
+        vector_repository: Qdrant-backed repository for phrase search operations
+
+    :returns:
+        service: TestService instance ready for T1 search pipeline
+    """
     return TestService(base_deps=base_deps, vector_repository=vector_repository)
+
 
 get_phrase_service = _create_service(PhraseService)
 get_phrase_service_without_session = _create_service_without_session(PhraseService)

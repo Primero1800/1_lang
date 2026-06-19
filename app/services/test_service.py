@@ -1,6 +1,7 @@
 import base64
 import logging
 import re
+from typing import Any
 
 from qdrant_client.models import ScoredPoint
 
@@ -40,7 +41,7 @@ class TestService(BaseService):
         image_raw: bytes,
         filters: TagExclusionFilters,
         search_settings: SearchSettings,
-    ) -> dict[str, dict]:
+    ) -> dict[str, Any]:
         """Orchestrate the full T1 pipeline: vision → embed → search → filter by mood and gender
 
         :param:
@@ -67,14 +68,20 @@ class TestService(BaseService):
             return {"message": PromptService.get_restricted_message(lang)}
 
         # Step 1: extract gender and one phrase per allowed tag from the image
-        gender, tag_phrases = await self._t1_get_phrases(image_raw, lang=lang, allowed_tags=allowed_tags)
-        logger.info(f"[T1] step 1 — gender={gender}, extracted {len(tag_phrases)} phrase(s): {tag_phrases}")
+        gender, tag_phrases = await self._t1_get_phrases(
+            image_raw, lang=lang, allowed_tags=allowed_tags
+        )
+        logger.info(
+            f"[T1] step 1 — gender={gender}, extracted {len(tag_phrases)} phrase(s): {tag_phrases}"
+        )
         if not tag_phrases:
             return {}
 
         # Step 2: embed each phrase with search_query prefix
         tag_vectors = await self._t1_embed_phrases(tag_phrases)
-        logger.info(f"[T1] step 2 — embedded {len(tag_vectors)}/{len(tag_phrases)} phrase(s)")
+        logger.info(
+            f"[T1] step 2 — embedded {len(tag_vectors)}/{len(tag_phrases)} phrase(s)"
+        )
         if not tag_vectors:
             return {}
 
@@ -87,7 +94,9 @@ class TestService(BaseService):
             lang=lang,
         )
         total = sum(len(r) for r in results)
-        logger.info(f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)")
+        logger.info(
+            f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)"
+        )
 
         # Step 4: extract variants by mood and gender, group by original
         mood_key = search_settings.mood.value
@@ -113,17 +122,25 @@ class TestService(BaseService):
             gender: 'male' or 'female' (defaults to 'male' if undetermined)
             tag_phrases: dict of {tag: observation phrase}
         """
+        # 1. Skip if vision model is unavailable
         if not self.ai_client.supports_vision:
             logger.error("[T1, step 1] ai_client does not support vision")
             return "male", {}
-        prompt = PromptService.get_t1_vision_prompt(lang=lang, allowed_tags=allowed_tags)
+        # 2. Build the vision prompt for the allowed tags
+        prompt = PromptService.get_t1_vision_prompt(
+            lang=lang, allowed_tags=allowed_tags
+        )
+        # 3. Encode image and call the vision model
         image_b64 = base64.b64encode(image_raw).decode()
         raw = await self.ai_client.vision_chat(images_b64=[image_b64], prompt=prompt)
         if not raw:
             logger.warning("[T1, step 1] vision returned empty response")
             return "male", {}
+        # 4. Parse gender and per-tag phrases from the vision response
         gender, tag_phrases = self._parse_vision_phrases(raw)
-        logger.info(f"[T1, step 1] gender={gender}, parsed {len(tag_phrases)} phrase(s)")
+        logger.info(
+            f"[T1, step 1] gender={gender}, parsed {len(tag_phrases)} phrase(s)"
+        )
         return gender, tag_phrases
 
     @staticmethod
@@ -154,11 +171,18 @@ class TestService(BaseService):
                     continue
                 phrases = variants.get(mood_key, {}).get(gender, [])
                 if phrases:
-                    output[original] = {"tag": tag, "score": round(point.score, 4), "gender": gender, "phrases": phrases}
+                    output[original] = {
+                        "tag": tag,
+                        "score": round(point.score, 4),
+                        "gender": gender,
+                        "phrases": phrases,
+                    }
         return output
 
     @log_decorator(level=logging.DEBUG)
-    async def _t1_embed_phrases(self, tag_phrases: dict[str, str]) -> dict[str, list[float]]:
+    async def _t1_embed_phrases(
+        self, tag_phrases: dict[str, str]
+    ) -> dict[str, list[float]]:
         """Embed tagged observation phrases using Mistral search_query strategy
 
         :param:
@@ -167,16 +191,25 @@ class TestService(BaseService):
         :returns:
             tag_vectors: dict of {tag: embedding vector}, preserving input order
         """
+        # 1. Skip if embed model is unavailable
         if not self.ai_client.supports_embed:
             logger.error("[T1, step 2] ai_client does not support embed")
             return {}
+        # 2. Separate tag keys and phrase texts for the embed call
         tags = list(tag_phrases.keys())
         phrases = list(tag_phrases.values())
+        # 3. Embed all phrases in a single batch call
         result = await self.ai_client.embed(phrases, task_type="query")
         if not result:
             logger.warning("[T1, step 2] embed returned empty result")
             return {}
-        vectors = result if isinstance(result, list) and isinstance(result[0], list) else [result]
+        # 4. Normalise single-vector response to a list of vectors
+        vectors = (
+            result
+            if isinstance(result, list) and isinstance(result[0], list)
+            else [result]
+        )
+        # 5. Pair each tag with its corresponding embedding vector
         return dict(zip(tags, vectors))
 
     @staticmethod
@@ -191,18 +224,27 @@ class TestService(BaseService):
             tag_phrases: dict of {tag: phrase} parsed from the 'phrases' object
         """
         import json
+
+        # 1. Strip markdown code fence if present
         text = raw.strip()
         match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)
         if match:
             text = match.group(1).strip()
         try:
+            # 2. Parse JSON payload
             data = json.loads(text)
+            # 3. Normalise gender — default to 'male' on unknown value
             gender = data.get("gender", "male")
             if gender not in ("male", "female"):
                 gender = "male"
+            # 4. Extract and filter the per-tag phrase dict
             phrases = data.get("phrases", {})
             if isinstance(phrases, dict):
                 return gender, {k: str(v).strip() for k, v in phrases.items() if v}
         except Exception as exc:
-            logger.error("[T1, step 1] failed to parse vision output: %s", text[:300], exc_info=exc)
+            logger.error(
+                "[T1, step 1] failed to parse vision output: %s",
+                text[:300],
+                exc_info=exc,
+            )
         return "male", {}

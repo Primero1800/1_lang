@@ -1,5 +1,5 @@
 import logging
-from typing import Annotated, Any, Union
+from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 

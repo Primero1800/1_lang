@@ -67,12 +67,12 @@ class PhraseLoadingService(BaseService):
                 )
             ids = [p.id for p in batch]
             # 3. Fetch embeddings and variants for the batch
-            embeddings: list[
-                PhraseEmbedding
-            ] = await uow.phrase_embedding_repository.get_by_phrase_ids(ids)
-            variants: list[
-                PhraseData
-            ] = await uow.phrase_data_repository.get_by_phrase_ids(ids)
+            embeddings: list[PhraseEmbedding] = (
+                await uow.phrase_embedding_repository.get_by_phrase_ids(ids)
+            )
+            variants: list[PhraseData] = (
+                await uow.phrase_data_repository.get_by_phrase_ids(ids)
+            )
             # 4. Mark phrases as in-progress to prevent double-claiming
             await uow.phrase_repository.update_status(
                 ids=ids,

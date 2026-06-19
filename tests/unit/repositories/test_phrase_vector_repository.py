@@ -49,6 +49,45 @@ async def test_bulk_upsert_returns_count_on_success(
 
 
 @pytest.mark.asyncio
+async def test_search_batch_delegates_to_client(
+    vector_repo: PhraseVectorRepository, mock_vector_client: AsyncMock
+) -> None:
+    mock_vector_client.search_batch.return_value = [[]]
+    result = await vector_repo.search_batch(
+        vectors=[[0.1, 0.2]],
+        tags=["behavior"],
+        lang="ru",
+    )
+    mock_vector_client.search_batch.assert_called_once()
+    assert result == [[]]
+
+
+@pytest.mark.asyncio
+async def test_search_batch_empty_vectors_calls_with_empty_requests(
+    vector_repo: PhraseVectorRepository, mock_vector_client: AsyncMock
+) -> None:
+    mock_vector_client.search_batch.return_value = []
+    result = await vector_repo.search_batch(vectors=[], tags=[], lang="ru")
+    call_kwargs = mock_vector_client.search_batch.call_args.kwargs
+    assert call_kwargs["requests"] == []
+    assert result == []
+
+
+@pytest.mark.asyncio
+async def test_search_batch_builds_one_request_per_vector(
+    vector_repo: PhraseVectorRepository, mock_vector_client: AsyncMock
+) -> None:
+    mock_vector_client.search_batch.return_value = [[], []]
+    await vector_repo.search_batch(
+        vectors=[[0.1, 0.2], [0.3, 0.4]],
+        tags=["behavior", "mood"],
+        lang="en",
+    )
+    call_kwargs = mock_vector_client.search_batch.call_args.kwargs
+    assert len(call_kwargs["requests"]) == 2
+
+
+@pytest.mark.asyncio
 async def test_bulk_upsert_client_returns_none_adds_failed_ids(
     vector_repo: PhraseVectorRepository, mock_vector_client: AsyncMock
 ) -> None:
