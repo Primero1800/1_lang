@@ -12,6 +12,16 @@ class TagEnum(str, Enum):
     HAIRSTYLE = "hairstyle"
 
 
+class MoodEnum(str, Enum):
+    """Tone mood levels for phrase variant selection — maps to Qdrant payload keys A–E"""
+
+    CYNIC = "A"
+    DIRECT = "B"
+    OBJECTIVE = "C"
+    FRIENDLY = "D"
+    JOYFUL = "E"
+
+
 class LangEnum(str, Enum):
     """Supported phrase languages"""
 
