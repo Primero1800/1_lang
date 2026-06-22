@@ -33,6 +33,36 @@ class AIClientAbstract(abc.ABC):
     supports_embed: bool = False
     supports_chat: bool = True
 
+    @staticmethod
+    def _fire_token_task(
+        result: Any,
+        model: str,
+        operation: str | None,
+        is_embed: bool = False,
+    ) -> None:
+        """Schedule a background task to record token usage from an API response
+
+        :param:
+            result: raw API response dict containing 'usage' field
+            model: model identifier used in the call
+            operation: pipeline operation name; if None, recording is skipped
+            is_embed: if True, output_tokens is recorded as 0 (embeddings have no output)
+
+        :returns:
+            None
+        """
+        if not result or not operation:
+            return
+        usage = result.get("usage", {})
+        asyncio.create_task(
+            record_token_usage(
+                model=model,
+                operation=operation,
+                input_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=0 if is_embed else usage.get("completion_tokens", 0),
+            )
+        )
+
     @abc.abstractmethod
     async def start(self) -> None:
         """Start the client and initialise any internal resources
@@ -67,6 +97,7 @@ class AIClientAbstract(abc.ABC):
             model: model identifier override
             temperature: sampling temperature override
             options: additional provider-specific payload fields
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: generated text, or None on failure
@@ -88,6 +119,7 @@ class AIClientAbstract(abc.ABC):
             model: model identifier override
             temperature: sampling temperature override
             options: additional provider-specific payload fields
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: assistant reply text, or None on failure
@@ -107,6 +139,7 @@ class AIClientAbstract(abc.ABC):
             text: a single string or list of strings to embed
             model: embedding model identifier override
             task_type: 'query' or 'document' prefix strategy
+            operation: pipeline operation name for token tracking
 
         :returns:
             embedding: a single vector (str input) or list of vectors (list input), or None on failure
@@ -128,6 +161,7 @@ class AIClientAbstract(abc.ABC):
             prompt: instruction text accompanying the images
             model: vision model identifier override
             temperature: sampling temperature override
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: model response text, or None on failure
@@ -177,25 +211,6 @@ class MistralClient(AIClientAbstract):
             None
         """
         self.session = None  # type: ignore[assignment]
-
-    @staticmethod
-    def _fire_token_task(
-        result: Any,
-        model: str,
-        operation: str | None,
-        is_embed: bool = False,
-    ) -> None:
-        if not result or not operation:
-            return
-        usage = result.get("usage", {})
-        asyncio.create_task(
-            record_token_usage(
-                model=model,
-                operation=operation,
-                input_tokens=usage.get("prompt_tokens", 0),
-                output_tokens=0 if is_embed else usage.get("completion_tokens", 0),
-            )
-        )
 
     @log_decorator(level=logging.DEBUG)
     async def generate(
@@ -400,25 +415,6 @@ class GroqClient(AIClientAbstract):
         """
         self.session = None  # type: ignore[assignment]
 
-    @staticmethod
-    def _fire_token_task(
-        result: Any,
-        model: str,
-        operation: str | None,
-        is_embed: bool = False,
-    ) -> None:
-        if not result or not operation:
-            return
-        usage = result.get("usage", {})
-        asyncio.create_task(
-            record_token_usage(
-                model=model,
-                operation=operation,
-                input_tokens=usage.get("prompt_tokens", 0),
-                output_tokens=0 if is_embed else usage.get("completion_tokens", 0),
-            )
-        )
-
     @log_decorator(level=logging.DEBUG)
     async def generate(
         self,
@@ -531,15 +527,13 @@ class GroqClient(AIClientAbstract):
         task_type: Literal["query", "document"] | None = None,
         operation: str | None = None,
     ) -> list[float] | list[list[float]] | None:
-        """Not implemented: Groq does not support embeddings
+        """Not implemented: Groq does not support embeddings; always returns None
 
         :param:
             text: text input (unused)
             model: model identifier (unused)
             task_type: task type hint (unused)
-
-        :raise:
-            NotImplementedError: always
+            operation: pipeline operation name (unused)
 
         :returns:
             None

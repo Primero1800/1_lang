@@ -7,7 +7,7 @@ from app.services.ai_token_usage_service import AiTokenUsageService
 from app.uow import get_uow_factory
 
 
-@log_decorator(level=logging.INFO)
+@log_decorator(level=logging.DEBUG)
 async def record_token_usage(
     model: str,
     operation: str,
