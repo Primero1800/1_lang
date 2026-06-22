@@ -4,7 +4,8 @@ import aiohttp
 from aiohttp import ClientSession
 from fastapi import Depends
 
-from app.adapters.ai_client import AIClientAbstract, MistralClient, GroqClient
+from app.adapters.ai_client import AIClientAbstract, GroqClient, MistralClient
+from app.adapters.queue_client import MessageQueueClientAbstract, RedisClient
 from app.adapters.vector_client import VectorClientAbstract, QdrantVectorClient
 from app.core.config import settings
 from app.repositories.phrase_vector_repository import PhraseVectorRepository
@@ -16,6 +17,8 @@ groq_client: AIClientAbstract | None = None
 
 vector_client: VectorClientAbstract | None = None
 vector_client_main: VectorClientAbstract | None = None
+
+queue_client: MessageQueueClientAbstract | None = None
 
 
 async def get_aiohttp_session() -> ClientSession:
@@ -89,6 +92,18 @@ async def get_vector_client_main() -> VectorClientAbstract:
     if not vector_client_main:
         vector_client_main = QdrantVectorClient(use_main=True)
     return vector_client_main
+
+
+async def get_queue_client() -> MessageQueueClientAbstract:
+    """Get or create the message queue client singleton (RedisClient)
+
+    :returns:
+        queue_client: the shared RedisClient instance
+    """
+    global queue_client
+    if not queue_client:
+        queue_client = RedisClient()
+    return queue_client
 
 
 async def get_phrase_vector_repository(

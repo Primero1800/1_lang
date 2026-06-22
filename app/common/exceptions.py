@@ -63,6 +63,10 @@ class VectorDBHealthCheckError(BaseCustomException):
     """Raised when the vector database health check fails"""
 
 
+class QueueHealthCheckError(BaseCustomException):
+    """Raised when the message queue health check fails"""
+
+
 class VectorDBException(BaseCustomException):
     """Raised when a vector database operation (search, upsert) fails"""
 

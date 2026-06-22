@@ -46,6 +46,9 @@ jobs:
       T1_SEARCH_MIN_SCORE: 0.85
       VECTOR_DB_COLLECTION: test
       VECTOR_DB_VECTOR_SIZE: 1024
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      REDIS_DB: 0
 
     steps:
       - uses: actions/checkout@v4

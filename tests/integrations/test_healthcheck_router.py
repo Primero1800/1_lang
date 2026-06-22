@@ -32,3 +32,16 @@ async def test_health_check_qdrant_fail(async_client: AsyncClient, mocker) -> No
 
     response = await async_client.get("/health_check")
     assert response.status_code == 503
+
+
+@pytest.mark.asyncio
+async def test_health_check_queue_fail(async_client: AsyncClient, mocker) -> None:
+    from app.dependencies.infrastructure import get_queue_client
+    from app.main import app
+
+    mock_queue_client = mocker.AsyncMock(spec=["check_connection"])
+    mock_queue_client.check_connection.side_effect = Exception("Redis unavailable")
+    app.dependency_overrides[get_queue_client] = lambda: mock_queue_client
+
+    response = await async_client.get("/health_check")
+    assert response.status_code == 503

@@ -3,11 +3,13 @@ from typing import Annotated, Callable, Type, TypeVar
 from fastapi import Depends
 
 from app.adapters.ai_client import AIClientAbstract
+from app.adapters.queue_client import MessageQueueClientAbstract
 from app.adapters.vector_client import VectorClientAbstract
 from app.dependencies.infrastructure import (
     get_ai_client,
     get_groq_client,
     get_phrase_vector_repository,
+    get_queue_client,
     get_vector_client,
     get_vector_client_main,
 )
@@ -31,6 +33,7 @@ async def get_base_deps(
     vector_client_main: Annotated[
         VectorClientAbstract, Depends(get_vector_client_main)
     ],
+    queue_client: Annotated[MessageQueueClientAbstract, Depends(get_queue_client)],
 ) -> BaseDeps:
     """Assemble and return the shared infrastructure dependency container
 
@@ -40,6 +43,7 @@ async def get_base_deps(
         ai_client2: secondary AI client (Groq)
         vector_client: local Qdrant client (bcp)
         vector_client_main: remote Qdrant client (main)
+        queue_client: async Redis client
 
     :returns:
         base_deps: populated BaseDeps dataclass instance
@@ -50,6 +54,7 @@ async def get_base_deps(
         ai_client2=ai_client2,
         vector_client=vector_client,
         vector_client_main=vector_client_main,
+        queue_client=queue_client,
     )
 
 

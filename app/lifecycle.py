@@ -1,12 +1,14 @@
 import aiohttp
 from fastapi import FastAPI
 
+from app.adapters.queue_client import MessageQueueClientAbstract
 from app.adapters.vector_client import VectorClientAbstract
 from app.common.logging import logger
 from app.core.config import settings
 from app.core.database import initialize_db, shutdown_db
 from app.dependencies.infrastructure import (
     get_aiohttp_session,
+    get_queue_client,
     get_vector_client,
     get_vector_client_main,
 )
@@ -28,6 +30,7 @@ class AppLifecycle:
         self.aiohttp_session: aiohttp.ClientSession | None = None
         self.vector_client: VectorClientAbstract | None = None
         self.vector_client_main: VectorClientAbstract | None = None
+        self.queue_client: MessageQueueClientAbstract | None = None
 
     async def on_startup(self) -> None:
         """Run all startup procedures
@@ -47,6 +50,9 @@ class AppLifecycle:
         if settings.QDRANT_MAIN_ENABLED:
             self.vector_client_main = await get_vector_client_main()
             await self.vector_client_main.start()
+        # 6. Start Message queue client
+        self.queue_client = await get_queue_client()
+        await self.queue_client.start()
 
     async def on_shutdown(self) -> None:
         """Gracefully stop all services and close connections
@@ -60,6 +66,8 @@ class AppLifecycle:
             await self.vector_client.stop()
         if self.vector_client_main:
             await self.vector_client_main.stop()
+        if self.queue_client:
+            await self.queue_client.stop()
         await shutdown_db()
         logger.info("Shutting down the APP")
 
