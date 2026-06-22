@@ -54,3 +54,17 @@ class AiTokenUsageService:
         logger.debug(
             f"[tokens] {operation} | {model} | in={input_tokens} out={output_tokens}"
         )
+
+    @log_decorator(level=logging.DEBUG)
+    async def bulk_accumulate(self, rows: list[dict]) -> None:
+        """Upsert a pre-aggregated batch of token usage rows in a single DB statement
+
+        :param:
+            rows: list of dicts with keys model, operation, name, date, input_tokens, output_tokens
+
+        :returns:
+            None
+        """
+        async with self._uow as uow:
+            await uow.ai_token_usage_repository.bulk_accumulate(rows)
+        logger.debug(f"[tokens] bulk_accumulate {len(rows)} row(s)")

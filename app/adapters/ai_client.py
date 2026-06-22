@@ -6,10 +6,10 @@ from typing import Any, Literal, TypedDict
 import aiohttp
 from aiohttp import ClientSession
 
+from app.adapters.queue_client import MessageQueueClientAbstract
 from app.common.logging import log_decorator, logger
 from app.core.aiohttp_exception_handler import external_request_exception_handler
 from app.core.config import settings
-from app.utils.token_utils import record_token_usage
 
 
 class Message(TypedDict):
@@ -32,20 +32,21 @@ class AIClientAbstract(abc.ABC):
     supports_vision: bool = False
     supports_embed: bool = False
     supports_chat: bool = True
+    queue_client: MessageQueueClientAbstract
 
-    @staticmethod
     def _fire_token_task(
+        self,
         result: Any,
         model: str,
         operation: str | None,
         is_embed: bool = False,
     ) -> None:
-        """Schedule a background task to record token usage from an API response
+        """Schedule a background task to publish token usage to the message queue
 
         :param:
             result: raw API response dict containing 'usage' field
             model: model identifier used in the call
-            operation: pipeline operation name; if None, recording is skipped
+            operation: pipeline operation name; if None, publishing is skipped
             is_embed: if True, output_tokens is recorded as 0 (embeddings have no output)
 
         :returns:
@@ -55,11 +56,16 @@ class AIClientAbstract(abc.ABC):
             return
         usage = result.get("usage", {})
         asyncio.create_task(
-            record_token_usage(
-                model=model,
-                operation=operation,
-                input_tokens=usage.get("prompt_tokens", 0),
-                output_tokens=0 if is_embed else usage.get("completion_tokens", 0),
+            self.queue_client.xadd(
+                settings.REDIS_TOKENS_STREAM,
+                {
+                    "model": model,
+                    "operation": operation,
+                    "input_tokens": str(usage.get("prompt_tokens", 0)),
+                    "output_tokens": str(
+                        0 if is_embed else usage.get("completion_tokens", 0)
+                    ),
+                },
             )
         )
 
@@ -176,16 +182,22 @@ class MistralClient(AIClientAbstract):
 
     _BASE_URL = "https://api.mistral.ai/v1"
 
-    def __init__(self, aiohttp_session: aiohttp.ClientSession) -> None:
-        """Initialize the Mistral client with a shared aiohttp session
+    def __init__(
+        self,
+        aiohttp_session: aiohttp.ClientSession,
+        queue_client: MessageQueueClientAbstract,
+    ) -> None:
+        """Initialize the Mistral client with a shared aiohttp session and queue client
 
         :param:
             aiohttp_session: the shared aiohttp ClientSession
+            queue_client: message queue client for token usage publishing
 
         :returns:
             None
         """
         self.session: ClientSession = aiohttp_session
+        self.queue_client = queue_client
         self._model: str = settings.MISTRAL_MODEL
         self._embed_model: str = settings.MISTRAL_EMBED_MODEL
         self._timeout = aiohttp.ClientTimeout(total=settings.MISTRAL_TIMEOUT_SEC)
@@ -382,16 +394,22 @@ class GroqClient(AIClientAbstract):
 
     _BASE_URL = "https://api.groq.com/openai/v1"
 
-    def __init__(self, aiohttp_session: aiohttp.ClientSession) -> None:
-        """Initialize the Groq client with a shared aiohttp session
+    def __init__(
+        self,
+        aiohttp_session: aiohttp.ClientSession,
+        queue_client: MessageQueueClientAbstract,
+    ) -> None:
+        """Initialize the Groq client with a shared aiohttp session and queue client
 
         :param:
             aiohttp_session: the shared aiohttp ClientSession
+            queue_client: message queue client for token usage publishing
 
         :returns:
             None
         """
         self.session: ClientSession = aiohttp_session
+        self.queue_client = queue_client
         self._model: str = settings.GROQ_MODEL
         self._vision_model: str = settings.GROQ_VISION_MODEL
         self._timeout = aiohttp.ClientTimeout(total=settings.GROQ_TIMEOUT_SEC)

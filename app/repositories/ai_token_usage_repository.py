@@ -56,3 +56,26 @@ class AiTokenUsageRepository(BaseRepository):
             },
         )
         await self._session.execute(stmt)
+
+    @log_decorator(level=logging.DEBUG)
+    async def bulk_accumulate(self, rows: list[dict]) -> None:
+        """Upsert multiple pre-aggregated token usage rows in a single statement
+
+        :param:
+            rows: list of dicts with keys model, operation, name, date, input_tokens, output_tokens
+
+        :returns:
+            None
+        """
+        if not rows:
+            return
+        stmt = pg_insert(AiTokenUsage).values(rows)
+        stmt = stmt.on_conflict_do_update(
+            constraint="uq_ai_token_usage",
+            set_={
+                "input_tokens": AiTokenUsage.input_tokens + stmt.excluded.input_tokens,
+                "output_tokens": AiTokenUsage.output_tokens + stmt.excluded.output_tokens,
+                "updated_at": func.now(),
+            },
+        )
+        await self._session.execute(stmt)
