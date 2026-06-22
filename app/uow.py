@@ -12,6 +12,7 @@ from app.repositories.ai_token_usage_repository import AiTokenUsageRepository
 from app.repositories.phrase_data_repository import PhraseDataRepository
 from app.repositories.phrase_embedding_repository import PhraseEmbeddingRepository
 from app.repositories.phrase_repository import PhraseRepository
+from app.repositories.worker_run_log_repository import WorkerRunLogRepository
 
 
 class UnitOfWork:
@@ -39,6 +40,7 @@ class UnitOfWork:
         self.phrase_data_repository = PhraseDataRepository(self.session)
         self.phrase_embedding_repository = PhraseEmbeddingRepository(self.session)
         self.ai_token_usage_repository = AiTokenUsageRepository(self.session)
+        self.worker_run_log_repository = WorkerRunLogRepository(self.session)
         return self
 
     async def __aexit__(self, exc_type: Any, exc_val: Any, exc_tb: Any) -> None:
