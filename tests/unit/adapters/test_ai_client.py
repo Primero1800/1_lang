@@ -88,7 +88,9 @@ async def test_fire_token_task_publishes_token_counts(
         None
     """
     result = {"usage": {"prompt_tokens": 100, "completion_tokens": 50}}
-    mistral_client._fire_token_task(result=result, model="mistral-large", operation="w2_generate")
+    mistral_client._fire_token_task(
+        result=result, model="mistral-large", operation="w2_generate"
+    )
     await asyncio.sleep(0)
 
     mock_queue_client.xadd.assert_called_once_with(

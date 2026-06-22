@@ -1,6 +1,6 @@
 import pytest
 import redis.asyncio as aioredis
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock
 
 from app.adapters.queue_client import RedisClient
 
@@ -51,7 +51,9 @@ async def test_xgroup_create_delegates_to_redis(redis_client: RedisClient) -> No
 
 
 @pytest.mark.asyncio
-async def test_xgroup_create_swallows_busygroup_error(redis_client: RedisClient) -> None:
+async def test_xgroup_create_swallows_busygroup_error(
+    redis_client: RedisClient,
+) -> None:
     """BUSYGROUP means the group already exists — should be silently ignored
 
     :param:
@@ -109,7 +111,9 @@ async def test_xreadgroup_returns_messages(redis_client: RedisClient) -> None:
 
 
 @pytest.mark.asyncio
-async def test_xreadgroup_returns_empty_list_when_none(redis_client: RedisClient) -> None:
+async def test_xreadgroup_returns_empty_list_when_none(
+    redis_client: RedisClient,
+) -> None:
     """Redis returns None when no messages are available
 
     :param:
