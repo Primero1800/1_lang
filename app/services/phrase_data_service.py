@@ -87,6 +87,7 @@ class PhraseDataService(BaseService):
                 {"role": "user", "content": payload},
             ],
             options={"response_format": {"type": "json_object"}},
+            operation="w2_generate",
         )
 
     def _parse_w2_response(self, raw: str) -> dict[int, dict[str, Any]]:

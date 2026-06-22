@@ -52,7 +52,9 @@ class PhraseEmbeddingService(BaseService):
             logger.error("ai_client does not support embed")
             return {}
         texts = [p.original for p in batch]
-        result = await self.ai_client.embed(texts, task_type="document")
+        result = await self.ai_client.embed(
+            texts, task_type="document", operation="w4_embed"
+        )
         if not result:
             return {}
         vectors: list[list[float]] = result  # type: ignore[assignment]
