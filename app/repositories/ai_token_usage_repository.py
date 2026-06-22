@@ -74,7 +74,8 @@ class AiTokenUsageRepository(BaseRepository):
             constraint="uq_ai_token_usage",
             set_={
                 "input_tokens": AiTokenUsage.input_tokens + stmt.excluded.input_tokens,
-                "output_tokens": AiTokenUsage.output_tokens + stmt.excluded.output_tokens,
+                "output_tokens": AiTokenUsage.output_tokens
+                + stmt.excluded.output_tokens,
                 "updated_at": func.now(),
             },
         )

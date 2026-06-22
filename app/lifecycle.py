@@ -1,4 +1,3 @@
-import asyncio
 
 import aiohttp
 from fastapi import FastAPI

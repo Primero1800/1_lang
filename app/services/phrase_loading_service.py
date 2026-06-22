@@ -63,7 +63,7 @@ class PhraseLoadingService(BaseService):
             # 2. Log each chosen phrase
             for i, member in enumerate(batch, start=1):
                 logger.info(
-                    f"[W5, loading] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
+                    f"[W5, loading] {i} chosen: id={member.id}, lang={member.lang.value}, status={member.status.value}"
                 )
             ids = [p.id for p in batch]
             # 3. Fetch embeddings and variants for the batch
@@ -165,7 +165,7 @@ class PhraseLoadingService(BaseService):
         # 4. Update statuses in DB
         async with self.uow_factory as uow:
             if done_ids:
-                logger.info(f"[W5, loading] done ids: {done_ids}")
+                logger.info(f"[W5, loading] done ids: {sorted(done_ids)}")
                 await uow.phrase_repository.update_status(
                     ids=list(done_ids), status=PhraseStatusEnum.LOADING_DONE
                 )

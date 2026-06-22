@@ -12,7 +12,9 @@ class WorkerRunLog(Base):
     """Audit log of individual worker batch executions"""
 
     __tablename__ = "worker_run_log"
-    __table_args__ = {"comment": "Лог запусков воркеров: старт, финиш, размер батча, результат"}
+    __table_args__ = {
+        "comment": "Лог запусков воркеров: старт, финиш, размер батча, результат"
+    }
 
     id: Mapped[int_pk]
     worker: Mapped[str] = mapped_column(

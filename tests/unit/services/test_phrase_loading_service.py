@@ -46,7 +46,8 @@ def _make_phrase(phrase_id: int) -> MagicMock:
     p.id = phrase_id
     p.original = f"phrase_{phrase_id}"
     p.tag = "behavior"
-    p.lang = "ru"
+    p.lang.value = "ru"
+    p.status.value = "embedding_done"
     return p
 
 

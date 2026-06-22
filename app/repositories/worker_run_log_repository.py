@@ -1,7 +1,7 @@
 import logging
 from datetime import datetime, timezone
 
-from sqlalchemy import select, update
+from sqlalchemy import update
 
 from app.common.enums import WorkerStatusEnum
 from app.common.logging import log_decorator

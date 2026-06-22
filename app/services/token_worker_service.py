@@ -2,10 +2,13 @@ import asyncio
 from datetime import date
 
 from app.adapters.queue_client import MessageQueueClientAbstract
+from app.common.enums import WorkerStatusEnum
 from app.common.logging import logger
 from app.core.config import settings
-from app.services.ai_token_usage_service import AiTokenUsageService
+from app.services.worker_run_log_service import WorkerRunLogService
 from app.uow import get_uow_factory
+
+_WORKER_NAME = settings.REDIS_TOKENS_WORKER
 
 
 class TokenWorkerService:
@@ -24,11 +27,16 @@ class TokenWorkerService:
         self._task: asyncio.Task | None = None
 
     async def start(self) -> None:
-        """Create consumer group and launch the background polling task
+        """Create consumer group, clean up stale logs, and launch the background polling task
 
         :returns:
             None
         """
+        uow = await get_uow_factory()
+        abandoned = await WorkerRunLogService(uow=uow).abandon_running(_WORKER_NAME)
+        if abandoned:
+            logger.warning("[token_worker] marked %d stale log(s) as FAILED", abandoned)
+
         await self._queue_client.xgroup_create(
             settings.REDIS_TOKENS_STREAM, settings.REDIS_TOKENS_GROUP
         )
@@ -81,7 +89,11 @@ class TokenWorkerService:
         for _stream, entries in messages:
             for msg_id, fields in entries:
                 msg_ids.append(msg_id)
-                key = (fields["model"], fields["operation"], fields.get("name", "system"))
+                key = (
+                    fields["model"],
+                    fields["operation"],
+                    fields.get("name", "system"),
+                )
                 if key not in aggregated:
                     aggregated[key] = {
                         "model": key[0],
@@ -94,18 +106,34 @@ class TokenWorkerService:
                 aggregated[key]["input_tokens"] += int(fields["input_tokens"])
                 aggregated[key]["output_tokens"] += int(fields["output_tokens"])
 
+        if not msg_ids:
+            return False
+
+        uow = await get_uow_factory()
         try:
-            uow = await get_uow_factory()
-            await AiTokenUsageService(uow=uow).bulk_accumulate(list(aggregated.values()))
+            async with uow:
+                log_id = await uow.worker_run_log_repository.create(
+                    _WORKER_NAME, batch_size=len(msg_ids)
+                )
+                await uow.ai_token_usage_repository.bulk_accumulate(
+                    list(aggregated.values())
+                )
+                await self._queue_client.xack(
+                    settings.REDIS_TOKENS_STREAM, settings.REDIS_TOKENS_GROUP, *msg_ids
+                )
+                await uow.worker_run_log_repository.finish(
+                    log_id,
+                    WorkerStatusEnum.DONE,
+                    result={"messages": len(msg_ids), "rows_upserted": len(aggregated)},
+                )
         except Exception as exc:
             logger.error(
-                "[token_worker] DB write failed, messages stay pending: %s", exc, exc_info=exc
+                "[token_worker] batch failed, messages stay pending: %s",
+                exc,
+                exc_info=exc,
             )
             return True
 
-        await self._queue_client.xack(
-            settings.REDIS_TOKENS_STREAM, settings.REDIS_TOKENS_GROUP, *msg_ids
-        )
         logger.debug(
             "[token_worker] processed %d message(s), %d row(s) upserted",
             len(msg_ids),
