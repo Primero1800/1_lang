@@ -16,6 +16,7 @@ def phrase_loading_service() -> PhraseLoadingService:
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
     base_deps.vector_client_main = MagicMock()
+    base_deps.queue_client = MagicMock()
     loading_repository = MagicMock(spec=PhraseVectorRepository)
     return PhraseLoadingService(
         base_deps=base_deps, loading_repository=loading_repository
@@ -45,7 +46,8 @@ def _make_phrase(phrase_id: int) -> MagicMock:
     p.id = phrase_id
     p.original = f"phrase_{phrase_id}"
     p.tag = "behavior"
-    p.lang = "ru"
+    p.lang.value = "ru"
+    p.status.value = "embedding_done"
     return p
 
 

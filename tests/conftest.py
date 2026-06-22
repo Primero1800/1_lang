@@ -62,7 +62,7 @@ async def empty_db(test_engine) -> AsyncGenerator[None, None]:
 async def async_client(test_session_maker) -> AsyncGenerator[AsyncClient, None]:
     from app.main import app
     from app.core.database import get_session
-    from app.dependencies.infrastructure import get_vector_client
+    from app.dependencies.infrastructure import get_vector_client, get_queue_client
     from app.uow import get_uow, get_uow_factory, UnitOfWork
 
     async def _override_get_uow():
@@ -81,10 +81,16 @@ async def async_client(test_session_maker) -> AsyncGenerator[AsyncClient, None]:
         mock.collection_exists = AsyncMock(return_value=True)
         return mock
 
+    def _override_get_queue_client():
+        mock = AsyncMock(spec=["check_connection"])
+        mock.check_connection = AsyncMock(return_value=None)
+        return mock
+
     app.dependency_overrides[get_uow] = _override_get_uow
     app.dependency_overrides[get_session] = _override_get_session
     app.dependency_overrides[get_uow_factory] = _override_get_uow_factory
     app.dependency_overrides[get_vector_client] = _override_get_vector_client
+    app.dependency_overrides[get_queue_client] = _override_get_queue_client
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:

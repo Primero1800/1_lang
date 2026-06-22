@@ -46,6 +46,14 @@ jobs:
       T1_SEARCH_MIN_SCORE: 0.85
       VECTOR_DB_COLLECTION: test
       VECTOR_DB_VECTOR_SIZE: 1024
+      REDIS_HOST: localhost
+      REDIS_PORT: 6379
+      REDIS_DB: 0
+      REDIS_TOKENS_STREAM: stream:tokens
+      REDIS_TOKENS_GROUP: token_workers
+      REDIS_TOKENS_WORKER: main
+      REDIS_TOKENS_BATCH_SIZE: 100
+      REDIS_TOKENS_POLL_INTERVAL: 60
 
     steps:
       - uses: actions/checkout@v4

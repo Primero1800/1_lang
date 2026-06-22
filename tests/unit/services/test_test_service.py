@@ -16,6 +16,7 @@ def test_service() -> TestService:
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
     base_deps.vector_client_main = MagicMock()
+    base_deps.queue_client = MagicMock()
     vector_repository = MagicMock(spec=PhraseVectorRepository)
     return TestService(base_deps=base_deps, vector_repository=vector_repository)
 

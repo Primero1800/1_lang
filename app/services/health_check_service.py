@@ -3,7 +3,11 @@ import logging
 
 from sqlalchemy import text
 
-from app.common.exceptions import DBHealthCheckError, VectorDBHealthCheckError
+from app.common.exceptions import (
+    DBHealthCheckError,
+    QueueHealthCheckError,
+    VectorDBHealthCheckError,
+)
 from app.common.logging import log_decorator, logger
 from app.core.config import settings
 from app.services.base import BaseService
@@ -19,7 +23,11 @@ class HealthCheckService(BaseService):
         :returns:
             None
         """
-        checks = [self.check_db_status(), self.check_vector_db_status()]
+        checks = [
+            self.check_db_status(),
+            self.check_vector_db_status(),
+            self.check_queue_status(),
+        ]
         if settings.QDRANT_MAIN_ENABLED:
             checks.append(self.check_vector_db_main_status())
         await asyncio.gather(*checks)
@@ -70,6 +78,28 @@ class HealthCheckService(BaseService):
         except Exception as exc:
             logger.critical("Qdrant health check error", exc_info=exc)
             raise VectorDBHealthCheckError("Qdrant health check error") from exc
+
+    @log_decorator(level=logging.DEBUG)
+    async def check_queue_status(self) -> None:
+        """Check message queue connectivity via PING
+
+        :raise:
+            QueueHealthCheckError: if queue is unreachable or times out
+        """
+
+        async def _exec() -> None:
+            await self.queue_client.check_connection()
+
+        try:
+            await asyncio.wait_for(_exec(), timeout=settings.HEALTH_CHECK_TIMEOUT_SEC)
+        except asyncio.TimeoutError as exc:
+            logger.critical("Queue health check timeout", exc_info=exc)
+            raise QueueHealthCheckError(
+                f"Queue health check timeout after {settings.HEALTH_CHECK_TIMEOUT_SEC}s"
+            ) from exc
+        except Exception as exc:
+            logger.critical("Queue health check error", exc_info=exc)
+            raise QueueHealthCheckError("Queue health check error") from exc
 
     @log_decorator(level=logging.DEBUG)
     async def check_vector_db_main_status(self) -> None:

@@ -43,9 +43,22 @@ services:
       networks:
         - my_service_network
 
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    expose:
+      - "${REDIS_PORT}"
+    ports:
+      - "6380:${REDIS_PORT}"
+    volumes:
+      - redis_data:/data
+    networks:
+      - my_service_network
+
 volumes:
   postgres_data:
   qdrant_data:
+  redis_data:
 
 networks:
   my_service_network:

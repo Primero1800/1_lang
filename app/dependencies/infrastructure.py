@@ -4,7 +4,8 @@ import aiohttp
 from aiohttp import ClientSession
 from fastapi import Depends
 
-from app.adapters.ai_client import AIClientAbstract, MistralClient, GroqClient
+from app.adapters.ai_client import AIClientAbstract, GroqClient, MistralClient
+from app.adapters.queue_client import MessageQueueClientAbstract, RedisClient
 from app.adapters.vector_client import VectorClientAbstract, QdrantVectorClient
 from app.core.config import settings
 from app.repositories.phrase_vector_repository import PhraseVectorRepository
@@ -16,6 +17,8 @@ groq_client: AIClientAbstract | None = None
 
 vector_client: VectorClientAbstract | None = None
 vector_client_main: VectorClientAbstract | None = None
+
+queue_client: MessageQueueClientAbstract | None = None
 
 
 async def get_aiohttp_session() -> ClientSession:
@@ -31,40 +34,6 @@ async def get_aiohttp_session() -> ClientSession:
             timeout=aiohttp.ClientTimeout(total=settings.AIOHTTP_TIMEOUT_SECONDS),
         )
     return aiohttp_session
-
-
-async def get_ai_client(
-    session: Annotated[ClientSession, Depends(get_aiohttp_session)],
-) -> AIClientAbstract:
-    """Get or create the MistralClient singleton
-
-    :param:
-        session: the shared aiohttp ClientSession
-
-    :returns:
-        ai_client: the MistralClient instance
-    """
-    global ai_client
-    if not ai_client:
-        ai_client = MistralClient(session)
-    return ai_client
-
-
-async def get_groq_client(
-    session: Annotated[ClientSession, Depends(get_aiohttp_session)],
-) -> AIClientAbstract:
-    """Get or create the GroqClient singleton
-
-    :param:
-        session: the shared aiohttp ClientSession
-
-    :returns:
-        groq_client: the GroqClient instance
-    """
-    global groq_client
-    if not groq_client:
-        groq_client = GroqClient(session)
-    return groq_client
 
 
 async def get_vector_client() -> VectorClientAbstract:
@@ -89,6 +58,56 @@ async def get_vector_client_main() -> VectorClientAbstract:
     if not vector_client_main:
         vector_client_main = QdrantVectorClient(use_main=True)
     return vector_client_main
+
+
+async def get_queue_client() -> MessageQueueClientAbstract:
+    """Get or create the message queue client singleton (RedisClient)
+
+    :returns:
+        queue_client: the shared RedisClient instance
+    """
+    global queue_client
+    if not queue_client:
+        queue_client = RedisClient()
+    return queue_client
+
+
+async def get_ai_client(
+    session: Annotated[ClientSession, Depends(get_aiohttp_session)],
+    queue: Annotated[MessageQueueClientAbstract, Depends(get_queue_client)],
+) -> AIClientAbstract:
+    """Get or create the MistralClient singleton
+
+    :param:
+        session: the shared aiohttp ClientSession
+        queue: message queue client for token usage publishing
+
+    :returns:
+        ai_client: the MistralClient instance
+    """
+    global ai_client
+    if not ai_client:
+        ai_client = MistralClient(session, queue)
+    return ai_client
+
+
+async def get_groq_client(
+    session: Annotated[ClientSession, Depends(get_aiohttp_session)],
+    queue: Annotated[MessageQueueClientAbstract, Depends(get_queue_client)],
+) -> AIClientAbstract:
+    """Get or create the GroqClient singleton
+
+    :param:
+        session: the shared aiohttp ClientSession
+        queue: message queue client for token usage publishing
+
+    :returns:
+        groq_client: the GroqClient instance
+    """
+    global groq_client
+    if not groq_client:
+        groq_client = GroqClient(session, queue)
+    return groq_client
 
 
 async def get_phrase_vector_repository(
