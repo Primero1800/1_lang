@@ -227,23 +227,41 @@ class PromptService:
         tag_lines = "\n".join(
             f"- {labels.get(tag, tag)} ({tag})" for tag in allowed_tags
         )
-        example = _json.dumps(
-            {"gender": "male", "phrases": {tag: "..." for tag in allowed_tags}},
-            ensure_ascii=False,
-        )
         if lang == "ru":
+            example = _json.dumps(
+                {
+                    "gender": "male",
+                    "phrases": {
+                        tag: ["конкретное наблюдение", "образная мысль"]
+                        for tag in allowed_tags
+                    },
+                },
+                ensure_ascii=False,
+            )
             return (
                 "Посмотри на фото и определи пол человека: 'male' или 'female' (по умолчанию 'male').\n"
-                "Дай по одному короткому наблюдению (5-6 слов, нижний регистр, без знаков препинания) "
-                "по каждой из следующих категорий:\n"
+                "По каждой из следующих категорий дай два наблюдения на русском языке в виде массива:\n"
+                "- первое: конкретное (5-6 слов, нижний регистр, без знаков препинания)\n"
+                "- второе: более абстрактное или образное (5-6 слов, нижний регистр, без знаков препинания)\n"
                 f"{tag_lines}\n"
                 "Никаких пояснений — только JSON:\n"
                 f"{example}"
             )
+        example = _json.dumps(
+            {
+                "gender": "male",
+                "phrases": {
+                    tag: ["concrete observation", "abstract reflection"]
+                    for tag in allowed_tags
+                },
+            },
+            ensure_ascii=False,
+        )
         return (
             "Look at the photo and determine the gender: 'male' or 'female' (default 'male').\n"
-            "Give one short observation (5-6 words, lowercase, no trailing punctuation) "
-            "per category:\n"
+            "For each category below give two observations in English as an array:\n"
+            "- first: concrete (5-6 words, lowercase, no trailing punctuation)\n"
+            "- second: more abstract or figurative (5-6 words, lowercase, no trailing punctuation)\n"
             f"{tag_lines}\n"
             "No explanations — only JSON:\n"
             f"{example}"

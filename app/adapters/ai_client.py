@@ -9,6 +9,7 @@ from aiohttp import ClientSession
 from app.common.logging import log_decorator, logger
 from app.core.aiohttp_exception_handler import external_request_exception_handler
 from app.core.config import settings
+from app.utils.token_utils import record_token_usage
 
 
 class Message(TypedDict):
@@ -56,6 +57,7 @@ class AIClientAbstract(abc.ABC):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Generate a completion from a single user prompt
 
@@ -77,6 +79,7 @@ class AIClientAbstract(abc.ABC):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Send a multi-turn chat request
 
@@ -96,6 +99,7 @@ class AIClientAbstract(abc.ABC):
         text: str | list[str],
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
+        operation: str | None = None,
     ) -> list[float] | list[list[float]] | None:
         """Compute embeddings for one or more text inputs
 
@@ -115,6 +119,7 @@ class AIClientAbstract(abc.ABC):
         prompt: str,
         model: str | None = None,
         temperature: float | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Send images and a text prompt to a vision model
 
@@ -173,6 +178,25 @@ class MistralClient(AIClientAbstract):
         """
         self.session = None  # type: ignore[assignment]
 
+    @staticmethod
+    def _fire_token_task(
+        result: Any,
+        model: str,
+        operation: str | None,
+        is_embed: bool = False,
+    ) -> None:
+        if not result or not operation:
+            return
+        usage = result.get("usage", {})
+        asyncio.create_task(
+            record_token_usage(
+                model=model,
+                operation=operation,
+                input_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=0 if is_embed else usage.get("completion_tokens", 0),
+            )
+        )
+
     @log_decorator(level=logging.DEBUG)
     async def generate(
         self,
@@ -181,6 +205,7 @@ class MistralClient(AIClientAbstract):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Build a single-turn message list and delegate to chat
 
@@ -190,6 +215,7 @@ class MistralClient(AIClientAbstract):
             model: model identifier override
             temperature: sampling temperature override
             options: additional payload fields passed to chat
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: generated text, or None on failure
@@ -198,7 +224,9 @@ class MistralClient(AIClientAbstract):
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        return await self.chat(messages=messages, model=model, temperature=temperature)
+        return await self.chat(
+            messages=messages, model=model, temperature=temperature, operation=operation
+        )
 
     @log_decorator(level=logging.DEBUG)
     async def chat(
@@ -207,6 +235,7 @@ class MistralClient(AIClientAbstract):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Send a multi-turn chat request to the Mistral API
 
@@ -215,19 +244,19 @@ class MistralClient(AIClientAbstract):
             model: model identifier override
             temperature: sampling temperature override
             options: additional payload fields merged into request body
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: assistant reply text, or None on failure
         """
-        payload: dict[str, Any] = {
-            "model": model or self._model,
-            "messages": messages,
-        }
+        used_model = model or self._model
+        payload: dict[str, Any] = {"model": used_model, "messages": messages}
         if temperature is not None:
             payload["temperature"] = temperature
         if options:
             payload.update(options)
         result = await self.__post("/chat/completions", payload)
+        self._fire_token_task(result, used_model, operation)
         try:
             return result["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -240,6 +269,7 @@ class MistralClient(AIClientAbstract):
         text: str | list[str],
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
+        operation: str | None = None,
     ) -> list[float] | list[list[float]] | None:
         """Compute Mistral embeddings for one or more text inputs
 
@@ -247,23 +277,21 @@ class MistralClient(AIClientAbstract):
             text: a single string or list of strings to embed
             model: embedding model identifier override
             task_type: optional 'query' or 'document' prefix strategy
+            operation: pipeline operation name for token tracking
 
         :returns:
             embedding: a single vector (str input) or list of vectors (list input), or None on failure
         """
         is_single_string = isinstance(text, str)
         input_data = [text] if is_single_string else text
-
         if task_type == "query":
             input_data = [f"search_query: {t}" for t in input_data]
         elif task_type == "document":
             input_data = [f"search_document: {t}" for t in input_data]
-
-        payload: dict[str, Any] = {
-            "model": model or self._embed_model,
-            "input": input_data,
-        }
+        used_model = model or self._embed_model
+        payload: dict[str, Any] = {"model": used_model, "input": input_data}
         result = await self.__post("/embeddings", payload)
+        self._fire_token_task(result, used_model, operation, is_embed=True)
         try:
             embeddings = [item["embedding"] for item in result["data"]]
             return embeddings[0] if is_single_string else embeddings
@@ -278,6 +306,7 @@ class MistralClient(AIClientAbstract):
         prompt: str,
         model: str = "pixtral-12b-2409",
         temperature: float | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Send images and a text prompt to the Pixtral vision model
 
@@ -286,6 +315,7 @@ class MistralClient(AIClientAbstract):
             prompt: instruction text accompanying the images
             model: vision model identifier (default pixtral-12b-2409)
             temperature: sampling temperature override
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: model response text, or None on failure
@@ -304,6 +334,7 @@ class MistralClient(AIClientAbstract):
         result = await self.__post(
             "/chat/completions", payload, timeout=self._vision_timeout
         )
+        self._fire_token_task(result, model, operation)
         try:
             return result["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -369,6 +400,25 @@ class GroqClient(AIClientAbstract):
         """
         self.session = None  # type: ignore[assignment]
 
+    @staticmethod
+    def _fire_token_task(
+        result: Any,
+        model: str,
+        operation: str | None,
+        is_embed: bool = False,
+    ) -> None:
+        if not result or not operation:
+            return
+        usage = result.get("usage", {})
+        asyncio.create_task(
+            record_token_usage(
+                model=model,
+                operation=operation,
+                input_tokens=usage.get("prompt_tokens", 0),
+                output_tokens=0 if is_embed else usage.get("completion_tokens", 0),
+            )
+        )
+
     @log_decorator(level=logging.DEBUG)
     async def generate(
         self,
@@ -377,6 +427,7 @@ class GroqClient(AIClientAbstract):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Build a single-turn message list and delegate to chat
 
@@ -386,6 +437,7 @@ class GroqClient(AIClientAbstract):
             model: model identifier override
             temperature: sampling temperature override
             options: additional payload fields passed to chat
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: generated text, or None on failure
@@ -394,7 +446,9 @@ class GroqClient(AIClientAbstract):
         if system:
             messages.append({"role": "system", "content": system})
         messages.append({"role": "user", "content": prompt})
-        return await self.chat(messages=messages, model=model, temperature=temperature)
+        return await self.chat(
+            messages=messages, model=model, temperature=temperature, operation=operation
+        )
 
     @log_decorator(level=logging.DEBUG)
     async def chat(
@@ -403,6 +457,7 @@ class GroqClient(AIClientAbstract):
         model: str | None = None,
         temperature: float | None = None,
         options: dict[str, Any] | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Send a multi-turn chat request to the Groq API
 
@@ -411,19 +466,19 @@ class GroqClient(AIClientAbstract):
             model: model identifier override
             temperature: sampling temperature override
             options: additional payload fields merged into request body
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: assistant reply text, or None on failure
         """
-        payload: dict[str, Any] = {
-            "model": model or self._model,
-            "messages": messages,
-        }
+        used_model = model or self._model
+        payload: dict[str, Any] = {"model": used_model, "messages": messages}
         if temperature is not None:
             payload["temperature"] = temperature
         if options:
             payload.update(options)
         result = await self.__post("/chat/completions", payload)
+        self._fire_token_task(result, used_model, operation)
         try:
             return result["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -437,6 +492,7 @@ class GroqClient(AIClientAbstract):
         prompt: str,
         model: str | None = None,
         temperature: float | None = None,
+        operation: str | None = None,
     ) -> str | None:
         """Send images and a text prompt to the Groq vision model
 
@@ -445,23 +501,23 @@ class GroqClient(AIClientAbstract):
             prompt: instruction text accompanying the images
             model: vision model identifier override
             temperature: sampling temperature override
+            operation: pipeline operation name for token tracking
 
         :returns:
             text: model response text, or None on failure
         """
+        used_model = model or self._vision_model
         content: list[dict[str, Any]] = [
             {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
             for b64 in images_b64
         ]
         content.append({"type": "text", "text": prompt})
         messages: list[VisionMessage] = [{"role": "user", "content": content}]
-        payload: dict[str, Any] = {
-            "model": model or self._vision_model,
-            "messages": messages,
-        }
+        payload: dict[str, Any] = {"model": used_model, "messages": messages}
         if temperature is not None:
             payload["temperature"] = temperature
         result = await self.__post("/chat/completions", payload)
+        self._fire_token_task(result, used_model, operation)
         try:
             return result["choices"][0]["message"]["content"]
         except (KeyError, IndexError, TypeError) as exc:
@@ -473,6 +529,7 @@ class GroqClient(AIClientAbstract):
         text: str | list[str],
         model: str | None = None,
         task_type: Literal["query", "document"] | None = None,
+        operation: str | None = None,
     ) -> list[float] | list[list[float]] | None:
         """Not implemented: Groq does not support embeddings
 

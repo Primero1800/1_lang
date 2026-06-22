@@ -28,7 +28,9 @@ class PhraseService(BaseService):
             logger.error("ai_client does not support vision")
             return None
         images_b64 = [base64.b64encode(img).decode() for img in images_raw]
-        return await self.ai_client.vision_chat(images_b64=images_b64, prompt=prompt)
+        return await self.ai_client.vision_chat(
+            images_b64=images_b64, prompt=prompt, operation="w1_vision"
+        )
 
     @log_decorator(level=logging.INFO)
     async def _parse_pixtral_response(self, raw: str) -> list[dict[str, Any]]:

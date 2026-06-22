@@ -11,7 +11,9 @@ class AiTokenUsage(Base):
 
     __tablename__ = "ai_token_usage"
     __table_args__ = (
-        UniqueConstraint("model", "date", "name", "operation", name="uq_ai_token_usage"),
+        UniqueConstraint(
+            "model", "date", "name", "operation", name="uq_ai_token_usage"
+        ),
         {"comment": "Дневная агрегация токенов по модели, операции и актору"},
     )
 

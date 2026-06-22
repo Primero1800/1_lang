@@ -112,6 +112,7 @@ class PhraseTranslationService(BaseService):
                 {"role": "user", "content": payload},
             ],
             options={"response_format": {"type": "json_object"}},
+            operation="w3_translate",
         )
 
     def _parse_w3_response(self, raw: str) -> dict[int, dict[str, Any]]:

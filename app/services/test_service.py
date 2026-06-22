@@ -132,7 +132,9 @@ class TestService(BaseService):
         )
         # 3. Encode image and call the vision model
         image_b64 = base64.b64encode(image_raw).decode()
-        raw = await self.ai_client.vision_chat(images_b64=[image_b64], prompt=prompt)
+        raw = await self.ai_client.vision_chat(
+            images_b64=[image_b64], prompt=prompt, operation="t1_vision"
+        )
         if not raw:
             logger.warning("[T1, step 1] vision returned empty response")
             return "male", {}
@@ -199,7 +201,9 @@ class TestService(BaseService):
         tags = list(tag_phrases.keys())
         phrases = list(tag_phrases.values())
         # 3. Embed all phrases in a single batch call
-        result = await self.ai_client.embed(phrases, task_type="query")
+        result = await self.ai_client.embed(
+            phrases, task_type="query", operation="t1_embed"
+        )
         if not result:
             logger.warning("[T1, step 2] embed returned empty result")
             return {}
@@ -240,7 +244,15 @@ class TestService(BaseService):
             # 4. Extract and filter the per-tag phrase dict
             phrases = data.get("phrases", {})
             if isinstance(phrases, dict):
-                return gender, {k: str(v).strip() for k, v in phrases.items() if v}
+                result = {}
+                for k, v in phrases.items():
+                    if isinstance(v, list):
+                        joined = " ".join(s.strip() for s in v if s)
+                    else:
+                        joined = str(v).strip()
+                    if joined:
+                        result[k] = joined
+                return gender, result
         except Exception as exc:
             logger.error(
                 "[T1, step 1] failed to parse vision output: %s",

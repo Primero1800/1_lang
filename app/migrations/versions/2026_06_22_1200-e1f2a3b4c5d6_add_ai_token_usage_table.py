@@ -81,7 +81,9 @@ def upgrade() -> None:
             comment="Время обновления записи",
         ),
         sa.PrimaryKeyConstraint("id"),
-        sa.UniqueConstraint("model", "date", "name", "operation", name="uq_ai_token_usage"),
+        sa.UniqueConstraint(
+            "model", "date", "name", "operation", name="uq_ai_token_usage"
+        ),
         comment="Дневная агрегация токенов по модели, операции и актору",
     )
 
