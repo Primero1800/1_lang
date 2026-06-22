@@ -29,6 +29,14 @@ class LangEnum(str, Enum):
     EN = "en"
 
 
+class WorkerStatusEnum(str, Enum):
+    """Execution statuses for worker batch runs"""
+
+    RUNNING = "running"
+    DONE = "done"
+    FAILED = "failed"
+
+
 class PhraseStatusEnum(str, Enum):
     """Processing pipeline statuses for phrases"""
 
