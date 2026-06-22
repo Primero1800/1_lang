@@ -1,3 +1,5 @@
+import asyncio
+
 import aiohttp
 from fastapi import FastAPI
 
@@ -12,6 +14,7 @@ from app.dependencies.infrastructure import (
     get_vector_client,
     get_vector_client_main,
 )
+from app.services.token_worker_service import TokenWorkerService
 
 
 class AppLifecycle:
@@ -31,6 +34,7 @@ class AppLifecycle:
         self.vector_client: VectorClientAbstract | None = None
         self.vector_client_main: VectorClientAbstract | None = None
         self.queue_client: MessageQueueClientAbstract | None = None
+        self._token_worker: TokenWorkerService | None = None
 
     async def on_startup(self) -> None:
         """Run all startup procedures
@@ -53,6 +57,9 @@ class AppLifecycle:
         # 6. Start Message queue client
         self.queue_client = await get_queue_client()
         await self.queue_client.start()
+        # 7. Start token usage background worker
+        self._token_worker = TokenWorkerService(self.queue_client)
+        await self._token_worker.start()
 
     async def on_shutdown(self) -> None:
         """Gracefully stop all services and close connections
@@ -60,6 +67,8 @@ class AppLifecycle:
         :returns:
             None
         """
+        if self._token_worker:
+            await self._token_worker.stop()
         if self.aiohttp_session:
             await self.aiohttp_session.close()
         if self.vector_client:
