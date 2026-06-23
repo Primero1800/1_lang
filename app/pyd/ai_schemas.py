@@ -5,6 +5,19 @@ from pydantic import BaseModel
 T = TypeVar("T", bound=BaseModel)
 
 
+class PhraseItem(BaseModel):
+    """Single phrase with its tag category, as extracted from a vision model response"""
+
+    phrase: str
+    tag: str
+
+
+class VisionOutput(BaseModel):
+    """Structured output from the W1 vision chain — flat list of all phrases across all photos"""
+
+    phrases: list[PhraseItem]
+
+
 class ToneVariants(BaseModel):
     """Phrase variants for a single tone, split by gender"""
 

@@ -73,3 +73,7 @@ class VectorDBException(BaseCustomException):
 
 class ConnectionException(BaseCustomException):
     """Raised when an external HTTP request fails"""
+
+
+class VisionPipelineException(BaseCustomException):
+    """Raised when the W1 vision chain fails at any step"""
