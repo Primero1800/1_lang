@@ -33,6 +33,7 @@ class UploadImagesResponse(BaseModel):
     phrases_found: int
     inserted: int
     skipped: int
+    error: str | None = None
 
 
 class WorkerBatchResponse(BaseModel):

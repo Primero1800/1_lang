@@ -25,7 +25,7 @@ async def test_upload_images_success(async_client: AsyncClient) -> None:
         files=[("images", ("test.jpg", b"fake image data", "image/jpeg"))],
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
     assert data["phrases_found"] == 5
     assert data["inserted"] == 4
@@ -52,7 +52,7 @@ async def test_upload_images_no_phrases_found(async_client: AsyncClient) -> None
         files=[("images", ("test.jpg", b"fake image data", "image/jpeg"))],
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
     data = response.json()
     assert data["phrases_found"] == 0
     assert data["inserted"] == 0
@@ -79,7 +79,7 @@ async def test_upload_images_with_lang_en(async_client: AsyncClient) -> None:
         files=[("images", ("test.jpg", b"fake image data", "image/jpeg"))],
     )
 
-    assert response.status_code == 201
+    assert response.status_code == 200
     mock_phrase_service.upload_images.assert_called_once_with(
         images_raw=[b"fake image data"],
         lang="en",

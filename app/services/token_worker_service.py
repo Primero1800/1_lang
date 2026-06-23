@@ -58,6 +58,11 @@ class TokenWorkerService:
         logger.info("[token_worker] stopped")
 
     async def _run(self) -> None:
+        """Polling loop: reclaim pending messages on startup then continuously drain new ones
+
+        :returns:
+            None
+        """
         # Reclaim messages delivered but not acked before last restart
         await self._process(cursor="0")
 
@@ -73,6 +78,15 @@ class TokenWorkerService:
                 await asyncio.sleep(settings.REDIS_TOKENS_POLL_INTERVAL)
 
     async def _process(self, cursor: str) -> bool:
+        """Read one batch from the stream, aggregate token counts, persist, and ack
+
+        :param:
+            cursor: '>' for new messages, '0' to reclaim pending unacked messages
+
+        :returns:
+            had_messages: True if at least one message was processed, False if stream was empty
+        """
+        # 1. Read next batch from the stream
         messages = await self._queue_client.xreadgroup(
             settings.REDIS_TOKENS_GROUP,
             settings.REDIS_TOKENS_WORKER,
@@ -83,6 +97,7 @@ class TokenWorkerService:
         if not messages:
             return False
 
+        # 2. Aggregate token counts per (model, operation, name) key
         aggregated: dict[tuple, dict] = {}
         msg_ids: list[str] = []
 
@@ -109,6 +124,7 @@ class TokenWorkerService:
         if not msg_ids:
             return False
 
+        # 3. Persist the batch and acknowledge messages in one transaction
         uow = await get_uow_factory()
         try:
             async with uow:
@@ -118,13 +134,13 @@ class TokenWorkerService:
                 await uow.ai_token_usage_repository.bulk_accumulate(
                     list(aggregated.values())
                 )
-                await self._queue_client.xack(
-                    settings.REDIS_TOKENS_STREAM, settings.REDIS_TOKENS_GROUP, *msg_ids
-                )
                 await uow.worker_run_log_repository.finish(
                     log_id,
                     WorkerStatusEnum.DONE,
                     result={"messages": len(msg_ids), "rows_upserted": len(aggregated)},
+                )
+                await self._queue_client.xack(
+                    settings.REDIS_TOKENS_STREAM, settings.REDIS_TOKENS_GROUP, *msg_ids
                 )
         except Exception as exc:
             logger.error(

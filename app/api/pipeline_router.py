@@ -3,7 +3,7 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
-from app.common.exceptions import IntegrityDataException
+from app.common.exceptions import IntegrityDataException, VisionPipelineException
 from app.common.logging import log_decorator
 from app.dependencies.services import (
     get_phrase_loading_service_without_session,
@@ -34,7 +34,7 @@ router = APIRouter(
 @router.post(
     "/w1_upload",
     response_model=UploadImagesResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
     openapi_extra={
         "requestBody": {
             "required": True,
@@ -86,11 +86,8 @@ async def w1_upload_images(
 
     try:
         return await phrase_service.upload_images(images_raw=images_raw, lang=lang)
-    except IntegrityDataException as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Integrity constraint violation during phrase upload",
-        ) from e
+    except VisionPipelineException as e:
+        return {"phrases_found": 0, "inserted": 0, "skipped": 0, "error": str(e.detail)}
 
 
 @router.post(

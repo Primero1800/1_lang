@@ -1,75 +1,199 @@
+import asyncio
+import base64
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
+from langchain_core.messages import HumanMessage
+from langchain_core.runnables import RunnableLambda
+
 from app.common.enums import PhraseStatusEnum
+from app.common.exceptions import VisionPipelineException
+from app.pyd.ai_schemas import PhraseItem, VisionOutput
 from app.services.base import BaseDeps
 from app.services.phrase_service import PhraseService
 
 
 @pytest.fixture
 def phrase_service() -> PhraseService:
+    """
+    :returns:
+        service: PhraseService with mocked infrastructure; queue_client is AsyncMock
+        so asyncio.create_task(queue_client.xadd(...)) works in _fire_token_task
+    """
     base_deps = MagicMock(spec=BaseDeps)
     base_deps.uow_factory = MagicMock()
     base_deps.ai_client = MagicMock()
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
     base_deps.vector_client_main = MagicMock()
-    base_deps.queue_client = MagicMock()
+    base_deps.queue_client = AsyncMock()
     return PhraseService(base_deps=base_deps)
 
 
-@pytest.mark.asyncio
-async def test_parse_pixtral_response_plain_list(phrase_service: PhraseService) -> None:
-    raw = str(
-        [
-            [
-                {"behavior": ["typing fast", "looks focused"]},
-                {"appearance": ["neat and tidy"]},
-            ]
-        ]
+def _make_mock_uow() -> AsyncMock:
+    mock_uow = AsyncMock()
+    mock_uow.phrase_repository = AsyncMock()
+    mock_uow.__aenter__ = AsyncMock(return_value=mock_uow)
+    mock_uow.__aexit__ = AsyncMock(return_value=None)
+    return mock_uow
+
+
+def _vo(*phrase_tag_pairs: tuple[str, str]) -> VisionOutput:
+    return VisionOutput(
+        phrases=[PhraseItem(phrase=p, tag=t) for p, t in phrase_tag_pairs]
     )
-    result = await phrase_service._parse_pixtral_response(raw)
-    assert len(result) == 3
-    assert {"phrase": "typing fast", "tag": "behavior"} in result
-    assert {"phrase": "neat and tidy", "tag": "appearance"} in result
+
+
+# --- _encode_images ---
 
 
 @pytest.mark.asyncio
-async def test_parse_pixtral_response_with_code_fence(
+async def test_encode_images_converts_bytes_to_base64(
     phrase_service: PhraseService,
 ) -> None:
-    inner = str([[{"behavior": ["slouching in chair"]}]])
-    raw = f"```python\n{inner}\n```"
-    result = await phrase_service._parse_pixtral_response(raw)
-    assert result == [{"phrase": "slouching in chair", "tag": "behavior"}]
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    raw = b"test image bytes"
+    result = await phrase_service._encode_images({"images_raw": [raw], "lang": "ru"})
+    assert result["images_b64"] == [base64.b64encode(raw).decode()]
+    assert result["lang"] == "ru"
 
 
 @pytest.mark.asyncio
-async def test_parse_pixtral_response_invalid_returns_empty(
-    phrase_service: PhraseService,
-) -> None:
-    result = await phrase_service._parse_pixtral_response("this is not valid python!!!")
-    assert result == []
+async def test_encode_images_passes_lang_through(phrase_service: PhraseService) -> None:
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    result = await phrase_service._encode_images({"images_raw": [b"x"], "lang": "en"})
+    assert result["lang"] == "en"
+
+
+# --- _build_vision_message ---
 
 
 @pytest.mark.asyncio
-async def test_parse_pixtral_response_deduplicates(
+async def test_build_vision_message_returns_single_human_message(
     phrase_service: PhraseService,
 ) -> None:
-    raw = str(
-        [
-            [{"behavior": ["same phrase here"]}],
-            [{"behavior": ["same phrase here"]}],
-        ]
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    result = await phrase_service._build_vision_message(
+        {"images_b64": ["abc123"], "lang": "ru"}
     )
-    result = await phrase_service._parse_pixtral_response(raw)
-    assert result == [{"phrase": "same phrase here", "tag": "behavior"}]
+    assert len(result) == 1
+    assert isinstance(result[0], HumanMessage)
 
 
 @pytest.mark.asyncio
-async def test_build_rows_normal_phrase(phrase_service: PhraseService) -> None:
-    parsed = [{"phrase": "Hello World", "tag": "behavior"}]
-    result = await phrase_service._build_rows(parsed, "ru")
+async def test_build_vision_message_embeds_image_url(
+    phrase_service: PhraseService,
+) -> None:
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    result = await phrase_service._build_vision_message(
+        {"images_b64": ["abc123"], "lang": "ru"}
+    )
+    content = result[0].content
+    image_items = [
+        c for c in content if isinstance(c, dict) and c.get("type") == "image_url"
+    ]
+    assert len(image_items) == 1
+    assert "abc123" in image_items[0]["image_url"]["url"]
+
+
+# --- _fire_token_task ---
+
+
+@pytest.mark.asyncio
+async def test_fire_token_task_raises_when_parsed_is_none(
+    phrase_service: PhraseService,
+) -> None:
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    with pytest.raises(VisionPipelineException):
+        await phrase_service._fire_token_task({"raw": None, "parsed": None})
+
+
+@pytest.mark.asyncio
+async def test_fire_token_task_returns_vision_output(
+    phrase_service: PhraseService,
+) -> None:
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    vo = _vo(("typing fast", "behavior"))
+    raw_mock = MagicMock()
+    raw_mock.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
+
+    result = await phrase_service._fire_token_task({"raw": raw_mock, "parsed": vo})
+    await asyncio.sleep(0)
+
+    assert result is vo
+
+
+@pytest.mark.asyncio
+async def test_fire_token_task_schedules_xadd(phrase_service: PhraseService) -> None:
+    """queue_client.xadd must be called once with the token usage payload
+
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    vo = _vo(("typing fast", "behavior"))
+    raw_mock = MagicMock()
+    raw_mock.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
+
+    await phrase_service._fire_token_task({"raw": raw_mock, "parsed": vo})
+    await asyncio.sleep(0)
+
+    phrase_service.queue_client.xadd.assert_called_once()
+
+
+# --- _build_rows ---
+
+
+@pytest.mark.asyncio
+async def test_build_rows_normalises_and_lowercases(
+    phrase_service: PhraseService,
+) -> None:
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    result = await phrase_service._build_rows(_vo(("Hello World", "behavior")), "ru")
     assert len(result) == 1
     assert result[0]["original"] == "hello world"
     assert result[0]["tag"] == "behavior"
@@ -79,70 +203,153 @@ async def test_build_rows_normal_phrase(phrase_service: PhraseService) -> None:
 
 @pytest.mark.asyncio
 async def test_build_rows_strips_special_chars(phrase_service: PhraseService) -> None:
-    parsed = [{"phrase": "hello, world!", "tag": "mood"}]
-    result = await phrase_service._build_rows(parsed, "en")
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    result = await phrase_service._build_rows(_vo(("hello, world!", "mood")), "en")
     assert result[0]["original"] == "hello world"
 
 
 @pytest.mark.asyncio
 async def test_build_rows_skips_empty_phrase(phrase_service: PhraseService) -> None:
-    parsed = [{"phrase": "!!!???", "tag": "behavior"}]
-    result = await phrase_service._build_rows(parsed, "ru")
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    result = await phrase_service._build_rows(_vo(("!!!???", "behavior")), "ru")
     assert result == []
 
 
 @pytest.mark.asyncio
-async def test_upload_images_recognize_none(
-    phrase_service: PhraseService, mocker
+async def test_build_rows_deduplicates_by_original(
+    phrase_service: PhraseService,
 ) -> None:
-    mocker.patch.object(phrase_service, "_recognize", new=AsyncMock(return_value=None))
-    result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
-    assert result == {"phrases_found": 0, "inserted": 0, "skipped": 0}
+    """Second occurrence of the same cleaned text must be dropped
+
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    vo = VisionOutput(
+        phrases=[
+            PhraseItem(phrase="same phrase", tag="behavior"),
+            PhraseItem(phrase="same phrase", tag="mood"),
+        ]
+    )
+    result = await phrase_service._build_rows(vo, "ru")
+    assert len(result) == 1
+    assert result[0]["tag"] == "behavior"
+
+
+# --- _save_phrases ---
 
 
 @pytest.mark.asyncio
-async def test_upload_images_empty_parsed(
-    phrase_service: PhraseService, mocker
-) -> None:
-    mocker.patch.object(
-        phrase_service, "_recognize", new=AsyncMock(return_value="some raw")
-    )
-    mocker.patch.object(
-        phrase_service, "_parse_pixtral_response", new=AsyncMock(return_value=[])
-    )
-    result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
-    assert result == {"phrases_found": 0, "inserted": 0, "skipped": 0}
+async def test_save_phrases_raises_on_empty_rows(phrase_service: PhraseService) -> None:
+    """
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    with pytest.raises(VisionPipelineException):
+        await phrase_service._save_phrases([])
 
 
 @pytest.mark.asyncio
-async def test_upload_images_empty_rows(phrase_service: PhraseService, mocker) -> None:
-    mocker.patch.object(
-        phrase_service, "_recognize", new=AsyncMock(return_value="some raw")
-    )
-    mocker.patch.object(
-        phrase_service,
-        "_parse_pixtral_response",
-        new=AsyncMock(return_value=[{"phrase": "x", "tag": "y"}]),
-    )
-    mocker.patch.object(phrase_service, "_build_rows", new=AsyncMock(return_value=[]))
-    result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
-    assert result == {"phrases_found": 0, "inserted": 0, "skipped": 0}
+async def test_save_phrases_returns_counts(phrase_service: PhraseService) -> None:
+    """
+    :param:
+        phrase_service: service fixture
 
-
-@pytest.mark.asyncio
-async def test_upload_images_success(phrase_service: PhraseService, mocker) -> None:
+    :returns:
+        None
+    """
     rows = [
-        {"original": "a", "tag": "1", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-        {"original": "b", "tag": "1", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-        {"original": "c", "tag": "1", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
+        {
+            "original": "a",
+            "tag": "behavior",
+            "lang": "ru",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+        {
+            "original": "b",
+            "tag": "mood",
+            "lang": "ru",
+            "status": PhraseStatusEnum.DRAFT,
+        },
     ]
-    mocker.patch.object(phrase_service, "_recognize", new=AsyncMock(return_value="raw"))
-    mocker.patch.object(
-        phrase_service,
-        "_parse_pixtral_response",
-        new=AsyncMock(return_value=[{"phrase": "x", "tag": "y"}]),
-    )
-    mocker.patch.object(phrase_service, "_build_rows", new=AsyncMock(return_value=rows))
-    mocker.patch.object(phrase_service, "_save_phrases", new=AsyncMock(return_value=2))
+    mock_uow = _make_mock_uow()
+    mock_uow.phrase_repository.bulk_create = AsyncMock(return_value=[1])
+    phrase_service.uow_factory = mock_uow
+
+    result = await phrase_service._save_phrases(rows)
+
+    assert result["phrases_found"] == 2
+    assert result["inserted"] == 1
+    assert result["skipped"] == 1
+
+
+# --- upload_images ---
+
+
+@pytest.mark.asyncio
+async def test_upload_images_wraps_unexpected_error(
+    phrase_service: PhraseService,
+) -> None:
+    """Any unhandled exception from the chain must surface as VisionPipelineException
+
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+
+    async def _raise(_):
+        raise RuntimeError("model unavailable")
+
+    phrase_service._llm = MagicMock()
+    phrase_service._llm.with_structured_output.return_value = RunnableLambda(_raise)
+
+    with pytest.raises(VisionPipelineException):
+        await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
+
+
+@pytest.mark.asyncio
+async def test_upload_images_success(phrase_service: PhraseService) -> None:
+    """Full chain: fake LLM returns structured output; end-to-end result is correct
+
+    :param:
+        phrase_service: service fixture
+
+    :returns:
+        None
+    """
+    vo = _vo(("typing fast", "behavior"), ("looks neat", "appearance"))
+
+    async def _fake_llm(_):
+        return {"raw": MagicMock(usage_metadata=None), "parsed": vo}
+
+    phrase_service._llm = MagicMock()
+    phrase_service._llm.with_structured_output.return_value = RunnableLambda(_fake_llm)
+
+    mock_uow = _make_mock_uow()
+    mock_uow.phrase_repository.bulk_create = AsyncMock(return_value=[1, 2])
+    phrase_service.uow_factory = mock_uow
+
     result = await phrase_service.upload_images(images_raw=[b"img"], lang="ru")
-    assert result == {"phrases_found": 3, "inserted": 2, "skipped": 1}
+
+    assert result["phrases_found"] == 2
+    assert result["inserted"] == 2
+    assert result["skipped"] == 0
