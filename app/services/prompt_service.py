@@ -37,29 +37,15 @@ PROMPT_PIXTRAL_RU = f"""Опиши подробно, ПОДРОБНО(!) что 
 6. {TagEnum.HAIRSTYLE.value} (сама прическа или головной убор по-простому, если прически не видно) - предложение из 5-6 слов
 Очень подробно надо, придирчиво. При этом вариант может быть в том числе вопросительным или восклицательным.
 
-для каждого фото надо выдать по 5 оригинальных, отличных друг от друга вариантов пунктов от 1 до 6 тэгов в виде
-1. {TagEnum.BEHAVIOR.value}: [Вариант 1_1. Вариант 1_2. Вариант 1_3. Вариант 1_4. Вариант 1_5]
-2. {TagEnum.APPEARANCE.value}: [Вариант 2_1. Вариант 2_2. Вариант 2_3. Вариант 2_4. Вариант 2_5]
-...
-6 {TagEnum.HAIRSTYLE.value}: [Вариант 6_1. Вариант 6_2. Вариант 6_3. Вариант 6_4. Вариант 6_5]
+Для каждого фото выдай ровно по 5 оригинальных, отличных друг от друга вариантов по каждому из 6 тэгов.
+Каждый вариант — это целое предложение из 5-6 слов, не одно слово.
+Итого на одно фото: 6 тэгов × 5 вариантов = 30 записей.
 
-Обращаю внимание, что каждый вариант - это не одно слово, а целое предложение из 5-6 слов.
+Важно: варианты в рамках одного тега не должны повторяться даже между разными фото в батче.
+ВСЕ фразы должны быть ТОЛЬКО на русском языке.
+Все варианты возвращай в нижнем регистре.
 
-И очень важное дополнительное условие - варианты в рамках одного тега даже в разных фотках не должны повторяться,
-а оставаться уникальными. Т.е. если в первой фотографии в прическе есть например "нет волос на голове",
-то такого варианта не должно быть в описании прически остальных фотографий.
-
-Все варианты возвращает в нижнем регистре lower(). Ответ должен быть списком list из списков list словарей dict.
-Никаких дополнительных фраз - только list[list[dict[int, list[str]]]]
-[
-    [
-        {{"{TagEnum.BEHAVIOR.value}": ["Вариант 1_1", "Вариант 1_2", "Вариант 1_3", "Вариант 1_4", "Вариант 1_5"]}},
-        {{"{TagEnum.APPEARANCE.value}": ["Вариант 2_1", "Вариант 2_2", "Вариант 2_3", "Вариант 2_4", "Вариант 2_5"]}},
-        ...
-        {{"{TagEnum.HAIRSTYLE.value}": ["Вариант 6_1", "Вариант 6_2", "Вариант 6_3", "Вариант 6_4", "Вариант 6_5"]}},
-    ],
-    ...
-]"""
+Тэги (значение поля tag): {", ".join(t.value for t in TagEnum)}"""
 
 PROMPT_PIXTRAL_EN = f"""Describe in thorough detail what is happening in the images: \
 what the person is doing, what is visible on screen, and their overall behavior.
@@ -72,25 +58,15 @@ Provide one clear, specific sentence per tag:
 6. {TagEnum.HAIRSTYLE.value} (describe the hair or headwear plainly; if not visible, note that) — 5-6 words
 Be very thorough and critical. Variants can be phrased as questions or exclamations.
 
-For each photo provide 5 original, distinct variants for tags 1-6:
-1. {TagEnum.BEHAVIOR.value}: [Variant 1_1. Variant 1_2. Variant 1_3. Variant 1_4. Variant 1_5]
-2. {TagEnum.APPEARANCE.value}: [Variant 2_1. ...]
-...
-6. {TagEnum.HAIRSTYLE.value}: [Variant 6_1. ...]
-
+For each photo provide exactly 5 original, distinct variants for each of the 6 tags.
 Each variant must be a full sentence of 5-6 words, not a single word.
-Variants within the same tag must remain unique across all photos in the batch.
+Total per photo: 6 tags × 5 variants = 30 items.
 
-Return all variants in lowercase. Output only list[list[dict[int, list[str]]]] — no extra text.
-[
-    [
-        {{"{TagEnum.BEHAVIOR.value}": ["Variant 1_1", "Variant 1_2", "Variant 1_3", "Variant 1_4", "Variant 1_5"]}},
-        {{"{TagEnum.APPEARANCE.value}": ["Variant 2_1", "Variant 2_2", "Variant 2_3", "Variant 2_4", "Variant 2_5"]}},
-        ...
-        {{"{TagEnum.HAIRSTYLE.value}": ["Variant 6_1", "Variant 6_2", "Variant 6_3", "Variant 6_4", "Variant 6_5"]}},
-    ],
-    ...
-]"""
+Important: variants within the same tag must remain unique across all photos in the batch.
+ALL phrases must be in English ONLY.
+Return all variants in lowercase.
+
+Tag values for the tag field: {", ".join(t.value for t in TagEnum)}"""
 
 
 PROMPT_MISTRAL_VARIANTS_RU = (
