@@ -56,3 +56,15 @@ class MistralResponse(BaseModel, Generic[T]):
     """Generic root response schema for Mistral calls returning a results list"""
 
     results: list[T]
+
+
+class VariantsResponse(BaseModel):
+    """Concrete W2 schema for with_structured_output (avoids generic bracket name issue)"""
+
+    results: list[PhraseVariants]
+
+
+class TranslationResponse(BaseModel):
+    """Concrete W3 schema for with_structured_output (avoids generic bracket name issue)"""
+
+    results: list[TranslatedPhrase]

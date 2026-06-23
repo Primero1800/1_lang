@@ -47,6 +47,8 @@ class WorkerBatchResponse(BaseModel):
 class W2GenerateResponse(WorkerBatchResponse):
     """W2 variant generation batch result"""
 
+    error: str | None = None
+
 
 class W3TranslateResponse(WorkerBatchResponse):
     """W3 translation batch result"""

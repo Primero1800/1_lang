@@ -3,7 +3,11 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
-from app.common.exceptions import IntegrityDataException, VisionPipelineException
+from app.common.exceptions import (
+    GenerationPipelineException,
+    IntegrityDataException,
+    VisionPipelineException,
+)
 from app.common.logging import log_decorator
 from app.dependencies.services import (
     get_phrase_loading_service_without_session,
@@ -116,11 +120,8 @@ async def w2_generate(
     """
     try:
         return await phrase_data_service.w2_generate(batch_size=batch_size)
-    except IntegrityDataException as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Integrity constraint violation during variant generation",
-        ) from e
+    except GenerationPipelineException as e:
+        return {"processed": 0, "failed": 0, "skipped": 0, "error": str(e.detail)}
 
 
 @router.post(

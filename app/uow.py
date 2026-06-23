@@ -130,11 +130,19 @@ class UnitOfWork:
 
 
 async def get_uow() -> AsyncGenerator[UnitOfWork, None]:
-    """FastAPI dependency for a request-scoped UnitOfWork"""
+    """FastAPI dependency for a request-scoped UnitOfWork
+
+    :returns:
+        uow: context-managed UnitOfWork; commits on clean exit, rolls back on error
+    """
     async with UnitOfWork(session_factory=async_database_session_maker) as uow:
         yield uow
 
 
 async def get_uow_factory() -> UnitOfWork:
-    """FastAPI dependency for a UnitOfWork factory (not context-managed)"""
+    """FastAPI dependency for a UnitOfWork factory (not context-managed)
+
+    :returns:
+        uow: UnitOfWork instance; the caller is responsible for entering and exiting the context
+    """
     return UnitOfWork(session_factory=async_database_session_maker)
