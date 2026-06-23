@@ -34,7 +34,7 @@ router = APIRouter(
 @router.post(
     "/w1_upload",
     response_model=UploadImagesResponse,
-    status_code=status.HTTP_201_CREATED,
+    status_code=status.HTTP_200_OK,
     openapi_extra={
         "requestBody": {
             "required": True,
@@ -86,8 +86,8 @@ async def w1_upload_images(
 
     try:
         return await phrase_service.upload_images(images_raw=images_raw, lang=lang)
-    except VisionPipelineException:
-        return {"phrases_found": 0, "inserted": 0, "skipped": 0}
+    except VisionPipelineException as e:
+        return {"phrases_found": 0, "inserted": 0, "skipped": 0, "error": str(e.detail)}
 
 
 @router.post(

@@ -49,7 +49,7 @@ class PhraseDataService(BaseService):
             batch = [first, *rest]
             for i, member in enumerate(batch, start=1):
                 logger.info(
-                    f"[W2, generating] {i}st chosen: id={member.id}, lang={member.lang}, status={member.status}"
+                    f"[W2, generating] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
             # 3. Mark all claimed phrases as in-progress (SKIP LOCKED prevents duplicates)
             await uow.phrase_repository.update_status(

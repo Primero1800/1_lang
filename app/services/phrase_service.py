@@ -14,23 +14,21 @@ from app.common.exceptions import VisionPipelineException
 from app.common.logging import log_decorator, logger
 from app.core.config import settings
 from app.pyd.ai_schemas import VisionOutput
-from app.services.base import BaseDeps, BaseService
+from app.services.base import BaseService
 from app.services.prompt_service import PromptService
-from app.uow import UnitOfWork
 
 _VISION_MODEL = "pixtral-12b-2409"
+_vision_llm = ChatMistralAI(
+    model_name=_VISION_MODEL,
+    api_key=SecretStr(settings.MISTRAL_API_KEY),
+    timeout=settings.MISTRAL_VISION_TIMEOUT_SEC,
+)
 
 
 class PhraseService(BaseService):
     """Service for processing images through the vision pipeline and persisting phrases"""
 
-    def __init__(self, base_deps: BaseDeps, uow: UnitOfWork | None = None) -> None:
-        super().__init__(base_deps, uow)
-        self._llm = ChatMistralAI(
-            model_name=_VISION_MODEL,
-            api_key=SecretStr(settings.MISTRAL_API_KEY),
-            timeout=settings.MISTRAL_VISION_TIMEOUT_SEC,
-        )
+    _llm = _vision_llm
 
     @log_decorator(level=logging.INFO)
     async def _encode_images(self, data: dict) -> dict:
@@ -156,11 +154,14 @@ class PhraseService(BaseService):
         :returns:
             result: dict with 'phrases_found', 'inserted', and 'skipped' counts
         """
+        # 1. Attach structured output schema to the LLM
         llm = self._llm.with_structured_output(VisionOutput, include_raw=True)
 
+        # 2. Bind the target language into the _build_rows step
         async def _build_rows_for_lang(vo: VisionOutput) -> list:
             return await self._build_rows(vo, lang)
 
+        # 3. Assemble the full LangChain processing pipeline
         chain = (
             RunnableLambda(self._encode_images)
             | RunnableLambda(self._build_vision_message)
@@ -170,6 +171,7 @@ class PhraseService(BaseService):
             | RunnableLambda(self._save_phrases)
         )
 
+        # 4. Invoke the chain; map unexpected errors to VisionPipelineException
         try:
             return await chain.ainvoke({"images_raw": images_raw, "lang": lang})
         except VisionPipelineException:
