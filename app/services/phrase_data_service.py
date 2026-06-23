@@ -1,19 +1,34 @@
+import asyncio
 import json
 import logging
 from typing import Any
 
-from pydantic import ValidationError
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableLambda
+from langchain_mistralai import ChatMistralAI
+from pydantic import SecretStr
 
 from app.common.enums import LangEnum, PhraseStatusEnum
+from app.common.exceptions import GenerationPipelineException
 from app.common.logging import log_decorator, logger
+from app.core.config import settings
 from app.models.phrases import Phrase
-from app.pyd.ai_schemas import MistralResponse, PhraseVariants
+from app.pyd.ai_schemas import VariantsResponse
 from app.services.base import BaseService
 from app.services.prompt_service import PromptService
+
+_W2_MODEL = settings.MISTRAL_MODEL
+_w2_llm = ChatMistralAI(
+    model_name=_W2_MODEL,
+    api_key=SecretStr(settings.MISTRAL_API_KEY),
+    timeout=settings.MISTRAL_TIMEOUT_SEC,
+)
 
 
 class PhraseDataService(BaseService):
     """W2 worker service: fetches draft phrases, generates tone variants via Mistral, saves results"""
+
+    _llm = _w2_llm
 
     @log_decorator(level=logging.INFO)
     async def _fetch_batch(self, batch_size: int) -> list[Phrase]:
@@ -26,7 +41,6 @@ class PhraseDataService(BaseService):
             batch: list of claimed Phrase objects (empty if nothing is ready)
         """
         async with self.uow_factory as uow:
-            # 1. Pick the highest-priority phrase (DRAFT / FAILED / stuck)
             first = await uow.phrase_repository.get_first_for_processing(
                 in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
                 priority_status=PhraseStatusEnum.GENERATING_FAILED,
@@ -37,7 +51,6 @@ class PhraseDataService(BaseService):
             logger.info(
                 f"[W2, generating] First chosen: id={first.id}, lang={first.lang}, status={first.status}"
             )
-            # 2. Fill the rest of the batch with same-lang phrases
             rest = await uow.phrase_repository.get_batch_for_processing(
                 in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
                 priority_status=PhraseStatusEnum.GENERATING_FAILED,
@@ -51,7 +64,6 @@ class PhraseDataService(BaseService):
                 logger.info(
                     f"[W2, generating] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
-            # 3. Mark all claimed phrases as in-progress (SKIP LOCKED prevents duplicates)
             await uow.phrase_repository.update_status(
                 ids=[p.id for p in batch],
                 status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
@@ -59,53 +71,67 @@ class PhraseDataService(BaseService):
         return batch
 
     @log_decorator(level=logging.INFO)
-    async def _call_mistral(self, batch: list[Phrase], lang: str) -> str | None:
-        """Send a batch of phrases to Mistral and return the raw JSON response
+    async def _build_w2_message(self, data: dict) -> list[BaseMessage]:
+        """Build system + user messages for the W2 variant generation call
 
         :param:
-            batch: list of Phrase objects to generate variants for
-            lang: language code used to select the system prompt ('ru' or 'en')
+            data: dict with 'batch' (list[Phrase]) and 'lang' (str)
 
         :returns:
-            raw: raw JSON string from Mistral, or None on failure
+            messages: [SystemMessage, HumanMessage] ready for the LLM
         """
-        if not self.ai_client.supports_chat:
-            logger.error("ai_client does not support chat")
-            return None
-        try:
-            system = PromptService.get("mistral_variants", lang)
-        except ValueError as exc:
-            logger.error("No prompt for lang=%s: %s", lang, exc)
-            return None
+        batch: list[Phrase] = data["batch"]
+        lang: str = data["lang"]
+        system = PromptService.get("mistral_variants", lang)
         payload = json.dumps(
             [{"id": p.id, "phrase": p.original, "tag": p.tag} for p in batch],
             ensure_ascii=False,
         )
-        return await self.ai_client.chat(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": payload},
-            ],
-            options={"response_format": {"type": "json_object"}},
-            operation="w2_generate",
-        )
+        return [SystemMessage(content=system), HumanMessage(content=payload)]
 
-    def _parse_w2_response(self, raw: str) -> dict[int, dict[str, Any]]:
-        """Validate and parse the Mistral JSON response into a phrase_id → variants mapping
+    @log_decorator(level=logging.INFO)
+    async def _fire_token_task(self, data: dict) -> VariantsResponse:
+        """Publish token usage to Redis Streams and return the parsed response
 
         :param:
-            raw: raw JSON string from Mistral
+            data: dict with 'raw' (AIMessage) and 'parsed' (VariantsResponse)
 
         :returns:
-            matched: dict of phrase_id → tone variants dict (empty on validation error)
+            parsed: the structured response from the LLM
         """
-        try:
-            data = MistralResponse[PhraseVariants].model_validate_json(raw)
-        except ValidationError as exc:
-            logger.error("Failed to validate w2 response: %s", exc)
-            return {}
-        result = {}
-        for item in data.results:
+        parsed: VariantsResponse | None = data.get("parsed")
+        if parsed is None:
+            raise GenerationPipelineException(
+                detail="LLM returned invalid structured output"
+            )
+        usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
+        asyncio.create_task(
+            self.queue_client.xadd(
+                settings.REDIS_TOKENS_STREAM,
+                {
+                    "model": _W2_MODEL,
+                    "operation": "w2_generate",
+                    "input_tokens": str(usage.get("input_tokens", 0)),
+                    "output_tokens": str(usage.get("output_tokens", 0)),
+                },
+            )
+        )
+        return parsed
+
+    @log_decorator(level=logging.INFO)
+    async def _parse_variants(
+        self, parsed: VariantsResponse
+    ) -> dict[int, dict[str, Any]]:
+        """Convert structured LLM response into a phrase_id → variants mapping
+
+        :param:
+            parsed: validated MistralResponse from the LLM
+
+        :returns:
+            matched: dict of phrase_id → tone variants dict
+        """
+        result: dict[int, dict[str, Any]] = {}
+        for item in parsed.results:
             variants = {
                 k: v
                 for k, v in item.model_dump(exclude={"id"}).items()
@@ -116,35 +142,21 @@ class PhraseDataService(BaseService):
         return result
 
     @log_decorator(level=logging.INFO)
-    async def w2_generate(self, batch_size: int) -> dict[str, int]:
-        """Run one W2 cycle: fetch → call Mistral → save variants → mark done/failed
+    async def _save_results(
+        self, matched: dict[int, dict[str, Any]], sent_ids: set[int]
+    ) -> dict[str, int]:
+        """Persist generated variants and update phrase statuses
 
         :param:
-            batch_size: number of phrases per Mistral call
+            matched: phrase_id → variants dict from the LLM
+            sent_ids: set of all phrase IDs sent to the LLM in this batch
 
         :returns:
             result: dict with 'processed', 'failed', and 'skipped' counts
         """
-        # 1. Fetch a batch of eligible phrases
-        batch = await self._fetch_batch(batch_size)
-        if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
-
-        sent_ids = {p.id for p in batch}
-        lang_raw = batch[0].lang
-        actual_lang = (
-            lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)
-        )
-
-        # 2. Call Mistral for all phrases in one request
-        raw = await self._call_mistral(batch, actual_lang)
-
-        # 3. Parse response and compute failed IDs
-        matched = self._parse_w2_response(raw) if raw else {}
         returned_ids = set(matched.keys())
         failed_ids = sent_ids - returned_ids
 
-        # 4. Save variants and update phrase statuses
         async with self.uow_factory as uow:
             if matched:
                 rows = [
@@ -168,3 +180,48 @@ class PhraseDataService(BaseService):
             "failed": len(failed_ids),
             "skipped": 0,
         }
+
+    @log_decorator(level=logging.INFO)
+    async def w2_generate(self, batch_size: int) -> dict[str, int]:
+        """Run one W2 cycle: fetch → call Mistral → parse → save variants → mark done/failed
+
+        :param:
+            batch_size: number of phrases per Mistral call
+
+        :returns:
+            result: dict with 'processed', 'failed', and 'skipped' counts
+        """
+        batch = await self._fetch_batch(batch_size)
+        if not batch:
+            return {"processed": 0, "failed": 0, "skipped": 1}
+
+        lang_raw = batch[0].lang
+        lang = lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)
+        sent_ids = {p.id for p in batch}
+
+        llm = self._llm.with_structured_output(
+            VariantsResponse, method="json_mode", include_raw=True
+        )
+
+        async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict:
+            return await self._save_results(matched, sent_ids)
+
+        chain = (
+            RunnableLambda(self._build_w2_message)
+            | llm
+            | RunnableLambda(self._fire_token_task)
+            | RunnableLambda(self._parse_variants)
+            | RunnableLambda(_save_for_batch)
+        )
+
+        try:
+            return await chain.ainvoke({"batch": batch, "lang": lang})
+        except GenerationPipelineException:
+            raise
+        except Exception as exc:
+            logger.error("[W2] generation failed: %s", exc, exc_info=exc)
+            async with self.uow_factory as uow:
+                await uow.phrase_repository.update_status(
+                    ids=list(sent_ids), status=PhraseStatusEnum.GENERATING_FAILED
+                )
+            raise GenerationPipelineException(detail=str(exc)) from exc

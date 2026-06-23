@@ -22,7 +22,11 @@ queue_client: MessageQueueClientAbstract | None = None
 
 
 async def get_aiohttp_session() -> ClientSession:
-    """Get or create the shared aiohttp ClientSession singleton"""
+    """Get or create the shared aiohttp ClientSession singleton
+
+    :returns:
+        session: the shared aiohttp ClientSession instance
+    """
     global aiohttp_session
     if not aiohttp_session:
         aiohttp_session = aiohttp.ClientSession(

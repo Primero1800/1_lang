@@ -77,3 +77,7 @@ class ConnectionException(BaseCustomException):
 
 class VisionPipelineException(BaseCustomException):
     """Raised when the W1 vision chain fails at any step"""
+
+
+class GenerationPipelineException(BaseCustomException):
+    """Raised when the W2 generation chain fails at any step"""
