@@ -41,6 +41,7 @@ class PhraseDataService(BaseService):
             batch: list of claimed Phrase objects (empty if nothing is ready)
         """
         async with self.uow_factory as uow:
+            # 1. Pick the highest-priority phrase (DRAFT / stuck) to anchor the batch lang
             first = await uow.phrase_repository.get_first_for_processing(
                 in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
                 priority_status=PhraseStatusEnum.GENERATING_FAILED,
@@ -51,6 +52,7 @@ class PhraseDataService(BaseService):
             logger.info(
                 f"[W2, generating] First chosen: id={first.id}, lang={first.lang}, status={first.status}"
             )
+            # 2. Fill the rest of the batch with same-lang phrases
             rest = await uow.phrase_repository.get_batch_for_processing(
                 in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
                 priority_status=PhraseStatusEnum.GENERATING_FAILED,
@@ -64,6 +66,7 @@ class PhraseDataService(BaseService):
                 logger.info(
                     f"[W2, generating] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
+            # 3. Mark all claimed phrases as in-progress to prevent duplicate claiming
             await uow.phrase_repository.update_status(
                 ids=[p.id for p in batch],
                 status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
@@ -199,13 +202,16 @@ class PhraseDataService(BaseService):
         lang = lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)
         sent_ids = {p.id for p in batch}
 
+        # 1. Attach structured output schema to the LLM
         llm = self._llm.with_structured_output(
             VariantsResponse, method="json_mode", include_raw=True
         )
 
+        # 2. Bind sent_ids into the _save_results step
         async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict:
             return await self._save_results(matched, sent_ids)
 
+        # 3. Assemble the full LangChain processing chain
         chain = (
             RunnableLambda(self._build_w2_message)
             | llm
@@ -214,14 +220,16 @@ class PhraseDataService(BaseService):
             | RunnableLambda(_save_for_batch)
         )
 
+        # 4. Invoke the chain; mark all phrases as failed on any error
         try:
             return await chain.ainvoke({"batch": batch, "lang": lang})
-        except GenerationPipelineException:
-            raise
         except Exception as exc:
-            logger.error("[W2] generation failed: %s", exc, exc_info=exc)
+            if not isinstance(exc, GenerationPipelineException):
+                logger.error("[W2] generation failed: %s", exc, exc_info=exc)
             async with self.uow_factory as uow:
                 await uow.phrase_repository.update_status(
                     ids=list(sent_ids), status=PhraseStatusEnum.GENERATING_FAILED
                 )
+            if isinstance(exc, GenerationPipelineException):
+                raise
             raise GenerationPipelineException(detail=str(exc)) from exc
