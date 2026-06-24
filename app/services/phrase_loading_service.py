@@ -142,38 +142,48 @@ class PhraseLoadingService(BaseService):
         if not batch:
             return {"processed": 0, "failed": 0, "skipped": 1}
 
-        # 2. Build Qdrant points
-        points, build_failed_ids = self._build_points(
-            batch, embeddings_map, variants_map
-        )
+        sent_ids = {p.id for p in batch}
 
-        # 3. Upsert to Qdrant
-        upsert_failed_ids: set[int] = set()
-        upserted_count = 0
-        if points:
-            (
-                upserted_count,
-                upsert_failed_ids,
-            ) = await self.loading_repository.bulk_upsert(points)
-            logger.info(
-                f"[W5, loading] upserted to Qdrant: {upserted_count}/{len(points)}"
+        # 2. Build points, upsert, update statuses; reset all to FAILED on any error
+        try:
+            points, build_failed_ids = self._build_points(
+                batch, embeddings_map, variants_map
             )
 
-        failed_ids = build_failed_ids | upsert_failed_ids
-        done_ids = {p.id for p in batch} - failed_ids
+            # 3. Upsert to Qdrant
+            upsert_failed_ids: set[int] = set()
+            upserted_count = 0
+            if points:
+                (
+                    upserted_count,
+                    upsert_failed_ids,
+                ) = await self.loading_repository.bulk_upsert(points)
+                logger.info(
+                    f"[W5, loading] upserted to Qdrant: {upserted_count}/{len(points)}"
+                )
 
-        # 4. Update statuses in DB
-        async with self.uow_factory as uow:
-            if done_ids:
-                logger.info(f"[W5, loading] done ids: {sorted(done_ids)}")
+            failed_ids = build_failed_ids | upsert_failed_ids
+            done_ids = sent_ids - failed_ids
+
+            # 4. Update statuses in DB
+            async with self.uow_factory as uow:
+                if done_ids:
+                    logger.info(f"[W5, loading] done ids: {sorted(done_ids)}")
+                    await uow.phrase_repository.update_status(
+                        ids=list(done_ids), status=PhraseStatusEnum.LOADING_DONE
+                    )
+                if failed_ids:
+                    logger.info(f"[W5, loading] failed ids: {failed_ids}")
+                    await uow.phrase_repository.update_status(
+                        ids=list(failed_ids), status=PhraseStatusEnum.LOADING_FAILED
+                    )
+        except Exception as exc:
+            logger.error("[W5] loading failed: %s", exc, exc_info=exc)
+            async with self.uow_factory as uow:
                 await uow.phrase_repository.update_status(
-                    ids=list(done_ids), status=PhraseStatusEnum.LOADING_DONE
+                    ids=list(sent_ids), status=PhraseStatusEnum.LOADING_FAILED
                 )
-            if failed_ids:
-                logger.info(f"[W5, loading] failed ids: {failed_ids}")
-                await uow.phrase_repository.update_status(
-                    ids=list(failed_ids), status=PhraseStatusEnum.LOADING_FAILED
-                )
+            raise
 
         return {
             "processed": len(done_ids),

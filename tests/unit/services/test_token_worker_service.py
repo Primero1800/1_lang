@@ -188,9 +188,9 @@ async def test_process_keeps_messages_pending_on_db_error(
         "app.services.token_worker_service.get_uow_factory",
         AsyncMock(return_value=mock_uow),
     ):
-        result = await service._process(cursor=">")
+        with pytest.raises(Exception, match="db down"):
+            await service._process(cursor=">")
 
-    assert result is True
     mock_queue_client.xack.assert_not_called()
 
 

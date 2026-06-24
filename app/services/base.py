@@ -1,9 +1,11 @@
+import asyncio
 from dataclasses import dataclass
 from typing import Any, Protocol
 
 from app.adapters.ai_client import AIClientAbstract
 from app.adapters.queue_client import MessageQueueClientAbstract
 from app.adapters.vector_client import VectorClientAbstract
+from app.core.config import settings
 from app.uow import UnitOfWork
 
 
@@ -87,3 +89,33 @@ class BaseService(BaseServiceAbstract):
             result: the generated content
         """
         raise NotImplementedError
+
+    def _queue_token_usage(
+        self,
+        model: str,
+        operation: str,
+        input_tokens: int,
+        output_tokens: int = 0,
+    ) -> None:
+        """Fire-and-forget: publish token usage to Redis Streams
+
+        :param:
+            model: model identifier string
+            operation: pipeline operation name (e.g. 'w2_generate')
+            input_tokens: number of input tokens consumed
+            output_tokens: number of output tokens consumed (0 for embeddings)
+
+        :returns:
+            None
+        """
+        asyncio.create_task(
+            self.queue_client.xadd(
+                settings.REDIS_TOKENS_STREAM,
+                {
+                    "model": model,
+                    "operation": operation,
+                    "input_tokens": str(input_tokens),
+                    "output_tokens": str(output_tokens),
+                },
+            )
+        )

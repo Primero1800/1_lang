@@ -85,3 +85,7 @@ class GenerationPipelineException(BaseCustomException):
 
 class TranslationPipelineException(BaseCustomException):
     """Raised when the W3 translation chain fails at any step"""
+
+
+class EmbeddingPipelineException(BaseCustomException):
+    """Raised when the W4 embedding chain fails at any step"""

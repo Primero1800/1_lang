@@ -1,4 +1,3 @@
-import asyncio
 import json
 import logging
 from typing import Any
@@ -131,16 +130,11 @@ class PhraseTranslationService(BaseService):
                 detail="LLM returned invalid structured output"
             )
         usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
-        asyncio.create_task(
-            self.queue_client.xadd(
-                settings.REDIS_TOKENS_STREAM,
-                {
-                    "model": _W3_MODEL,
-                    "operation": "w3_translate",
-                    "input_tokens": str(usage.get("input_tokens", 0)),
-                    "output_tokens": str(usage.get("output_tokens", 0)),
-                },
-            )
+        self._queue_token_usage(
+            model=_W3_MODEL,
+            operation="w3_translate",
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
         )
         return parsed
 
@@ -266,13 +260,13 @@ class PhraseTranslationService(BaseService):
             TranslationResponse, method="json_mode", include_raw=True
         )
 
-        # 3. Bind batch context into the _save_translations step
+        # 2. Bind batch context into the _save_translations step
         async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict:
             return await self._save_translations(
                 matched, sent_ids, batch, opposite_lang
             )
 
-        # 4. Assemble the full LangChain processing chain
+        # 3. Assemble the full LangChain processing chain
         chain = (
             RunnableLambda(self._build_w3_message)
             | llm
@@ -281,7 +275,7 @@ class PhraseTranslationService(BaseService):
             | RunnableLambda(_save_for_batch)
         )
 
-        # 5. Invoke the chain; mark all phrases as failed on any error
+        # 4. Invoke the chain; mark all phrases as failed on any error
         try:
             variants = await self._fetch_variants(list(sent_ids))
             return await chain.ainvoke(

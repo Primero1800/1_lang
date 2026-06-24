@@ -1,13 +1,27 @@
 import logging
 
+from langchain_core.runnables import RunnableLambda
+from pydantic import SecretStr
+
+from app.adapters.embeddings_client import TrackedMistralEmbeddings
 from app.common.enums import PhraseStatusEnum
+from app.common.exceptions import EmbeddingPipelineException
 from app.common.logging import log_decorator, logger
+from app.core.config import settings
 from app.models.phrases import Phrase
 from app.services.base import BaseService
+
+_W4_MODEL = settings.MISTRAL_EMBED_MODEL
+_w4_embeddings = TrackedMistralEmbeddings(
+    model=_W4_MODEL,
+    api_key=SecretStr(settings.MISTRAL_API_KEY),
+)
 
 
 class PhraseEmbeddingService(BaseService):
     """W4 worker service: fetches translated phrases, embeds them via Mistral, saves vectors"""
+
+    _embeddings = _w4_embeddings
 
     @log_decorator(level=logging.INFO)
     async def _fetch_batch(self, batch_size: int) -> list[Phrase]:
@@ -39,64 +53,53 @@ class PhraseEmbeddingService(BaseService):
         return batch
 
     @log_decorator(level=logging.INFO)
-    async def _call_embed(self, batch: list[Phrase]) -> dict[int, list[float]]:
+    async def _embed(self, batch: list[Phrase]) -> dict[int, list[float]]:
         """Embed all phrases in the batch in a single API call
 
         :param:
             batch: list of Phrase objects to embed
 
         :returns:
-            matched: dict of {phrase_id: embedding_vector}, empty on failure
+            matched: dict of {phrase_id: embedding_vector}
         """
-        if not self.ai_client.supports_embed:
-            logger.error("ai_client does not support embed")
-            return {}
         texts = [p.original for p in batch]
-        result = await self.ai_client.embed(
-            texts, task_type="document", operation="w4_embed"
-        )
-        if not result:
-            return {}
-        vectors: list[list[float]] = result  # type: ignore[assignment]
+        vectors, input_tokens = await self._embeddings.aembed_with_usage(texts)
         if len(vectors) != len(batch):
-            logger.error(
-                "[W4, embedding] vector count mismatch: got %d, expected %d",
-                len(vectors),
-                len(batch),
+            raise EmbeddingPipelineException(
+                detail=f"Vector count mismatch: got {len(vectors)}, expected {len(batch)}"
             )
-            return {}
+        self._queue_token_usage(
+            model=_W4_MODEL,
+            operation="w4_embed",
+            input_tokens=input_tokens,
+        )
         return {batch[i].id: vectors[i] for i in range(len(batch))}
 
     @log_decorator(level=logging.INFO)
-    async def w4_embed(self, batch_size: int) -> dict[str, int]:
-        """Run one W4 cycle: fetch → embed via Mistral → save vectors → mark done/failed
+    async def _save_vectors(
+        self, matched: dict[int, list[float]], sent_ids: set[int]
+    ) -> dict[str, int]:
+        """Persist embedding vectors and update phrase statuses
 
         :param:
-            batch_size: number of phrases per embedding call
+            matched: dict of {phrase_id: embedding_vector}
+            sent_ids: set of all phrase IDs sent to the embedding API
 
         :returns:
             result: dict with 'processed', 'failed', and 'skipped' counts
         """
-        # 1. Fetch a batch of eligible phrases
-        batch = await self._fetch_batch(batch_size)
-        if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
-
-        sent_ids = {p.id for p in batch}
-
-        # 2. Embed all phrases in one API call
-        matched = await self._call_embed(batch)
         returned_ids = set(matched.keys())
         failed_ids = sent_ids - returned_ids
 
-        # 3. Persist vectors and update phrase statuses
         async with self.uow_factory as uow:
+            # 1. Persist embedding vectors
             if matched:
                 rows = [
                     {"phrase_id": pid, "embedding": vector}
                     for pid, vector in matched.items()
                 ]
                 await uow.phrase_embedding_repository.bulk_upsert_embeddings(rows)
+            # 2. Update phrase statuses (DONE / FAILED)
             if returned_ids:
                 logger.info(f"[W4, embedding]: returned ids {returned_ids}")
                 await uow.phrase_repository.update_status(
@@ -113,3 +116,40 @@ class PhraseEmbeddingService(BaseService):
             "failed": len(failed_ids),
             "skipped": 0,
         }
+
+    @log_decorator(level=logging.INFO)
+    async def w4_embed(self, batch_size: int) -> dict[str, int]:
+        """Run one W4 cycle: fetch → embed via Mistral → save vectors → mark done/failed
+
+        :param:
+            batch_size: number of phrases per embedding call
+
+        :returns:
+            result: dict with 'processed', 'failed', and 'skipped' counts
+        """
+        batch = await self._fetch_batch(batch_size)
+        if not batch:
+            return {"processed": 0, "failed": 0, "skipped": 1}
+
+        sent_ids = {p.id for p in batch}
+
+        # 1. Bind sent_ids into the _save_vectors step
+        async def _save_for_batch(matched: dict[int, list[float]]) -> dict:
+            return await self._save_vectors(matched, sent_ids)
+
+        # 2. Assemble the embedding chain
+        chain = RunnableLambda(self._embed) | RunnableLambda(_save_for_batch)
+
+        # 3. Invoke the chain; mark all phrases as failed on any error
+        try:
+            return await chain.ainvoke(batch)
+        except Exception as exc:
+            if not isinstance(exc, EmbeddingPipelineException):
+                logger.error("[W4] embedding failed: %s", exc, exc_info=exc)
+            async with self.uow_factory as uow:
+                await uow.phrase_repository.update_status(
+                    ids=list(sent_ids), status=PhraseStatusEnum.EMBEDDING_FAILED
+                )
+            if isinstance(exc, EmbeddingPipelineException):
+                raise
+            raise EmbeddingPipelineException(detail=str(exc)) from exc

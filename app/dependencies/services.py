@@ -21,7 +21,7 @@ from app.services.phrase_embedding_service import PhraseEmbeddingService
 from app.services.phrase_loading_service import PhraseLoadingService
 from app.services.phrase_service import PhraseService
 from app.services.phrase_translation_service import PhraseTranslationService
-from app.services.test_service import TestService
+from app.services.phrase_search_service import PhraseSearchService
 from app.uow import UnitOfWork, get_uow_factory, get_uow
 
 
@@ -108,17 +108,17 @@ async def get_test_service_without_session(
     vector_repository: Annotated[
         PhraseVectorRepository, Depends(get_phrase_vector_repository)
     ],
-) -> TestService:
-    """FastAPI dependency for TestService with injected Qdrant vector repository
+) -> PhraseSearchService:
+    """FastAPI dependency for PhraseSearchService with injected Qdrant vector repository
 
     :param:
         base_deps: shared infrastructure dependencies
         vector_repository: Qdrant-backed repository for phrase search operations
 
     :returns:
-        service: TestService instance ready for T1 search pipeline
+        service: PhraseSearchService instance ready for T1 search pipeline
     """
-    return TestService(base_deps=base_deps, vector_repository=vector_repository)
+    return PhraseSearchService(base_deps=base_deps, vector_repository=vector_repository)
 
 
 get_phrase_service = _create_service(PhraseService)

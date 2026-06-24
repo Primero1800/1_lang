@@ -4,6 +4,7 @@ from typing import Annotated, Any, Literal
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
 from app.common.exceptions import (
+    EmbeddingPipelineException,
     GenerationPipelineException,
     IntegrityDataException,
     TranslationPipelineException,
@@ -183,11 +184,8 @@ async def w4_embed(
     """
     try:
         return await phrase_embedding_service.w4_embed(batch_size=batch_size)
-    except IntegrityDataException as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Integrity constraint violation during embedding",
-        ) from e
+    except EmbeddingPipelineException as e:
+        return {"processed": 0, "failed": 0, "skipped": 0, "error": str(e.detail)}
 
 
 @router.post(

@@ -14,11 +14,6 @@ from app.services.phrase_translation_service import PhraseTranslationService
 
 @pytest.fixture
 def phrase_translation_service() -> PhraseTranslationService:
-    """
-    :returns:
-        service: PhraseTranslationService with mocked infrastructure; queue_client is
-        AsyncMock so asyncio.create_task(queue_client.xadd(...)) works in _fire_token_task
-    """
     base_deps = MagicMock(spec=BaseDeps)
     base_deps.uow_factory = MagicMock()
     base_deps.ai_client = MagicMock()
@@ -86,13 +81,6 @@ def _matched(*phrase_ids: int) -> dict:
 async def test_fetch_batch_returns_empty_when_nothing_ready(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     mock_uow = _make_mock_uow()
     mock_uow.phrase_repository.get_first_for_processing.return_value = None
     phrase_translation_service.uow_factory = mock_uow
@@ -108,13 +96,6 @@ async def test_fetch_batch_returns_empty_when_nothing_ready(
 async def test_fetch_batch_returns_batch_and_marks_in_progress(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     first = _make_phrase(1)
     rest = [_make_phrase(2), _make_phrase(3)]
     mock_uow = _make_mock_uow()
@@ -136,13 +117,6 @@ async def test_fetch_batch_returns_batch_and_marks_in_progress(
 async def test_fetch_variants_returns_map(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     record = MagicMock()
     record.phrase_id = 1
     record.variants = {"A": "x"}
@@ -162,13 +136,6 @@ async def test_fetch_variants_returns_map(
 async def test_build_w3_message_returns_system_and_human(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     messages = await phrase_translation_service._build_w3_message(
         {"batch": [_make_phrase(1)], "variants": {}, "lang": "ru"}
     )
@@ -181,14 +148,6 @@ async def test_build_w3_message_returns_system_and_human(
 async def test_build_w3_message_merges_variants_into_payload(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """Variants for the phrase must appear in the HumanMessage JSON payload
-
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     p = _make_phrase(7)
     variants = {7: {"A": "tone_data"}}
     messages = await phrase_translation_service._build_w3_message(
@@ -206,13 +165,6 @@ async def test_build_w3_message_merges_variants_into_payload(
 async def test_fire_token_task_raises_when_parsed_is_none(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     with pytest.raises(TranslationPipelineException):
         await phrase_translation_service._fire_token_task({"raw": None, "parsed": None})
 
@@ -221,13 +173,6 @@ async def test_fire_token_task_raises_when_parsed_is_none(
 async def test_fire_token_task_returns_translation_response(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     tr = _translation_response(1)
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 80, "output_tokens": 40}
@@ -244,14 +189,6 @@ async def test_fire_token_task_returns_translation_response(
 async def test_fire_token_task_schedules_xadd(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """queue_client.xadd must be called once with token usage payload
-
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     tr = _translation_response(1)
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 80, "output_tokens": 40}
@@ -269,13 +206,6 @@ async def test_fire_token_task_schedules_xadd(
 async def test_parse_translations_maps_ids_to_dicts(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_translation_service._parse_translations(
         _translation_response(1, 2)
     )
@@ -289,14 +219,6 @@ async def test_parse_translations_maps_ids_to_dicts(
 async def test_parse_translations_skips_empty_translated(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """Items with blank translated text must be excluded from the result
-
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     tr = TranslationResponse(results=[TranslatedPhrase(id=5, translated="   ")])
     result = await phrase_translation_service._parse_translations(tr)
     assert result == {}
@@ -309,13 +231,6 @@ async def test_parse_translations_skips_empty_translated(
 async def test_save_translations_creates_phrases_and_variants(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     batch = [_make_phrase(1), _make_phrase(2)]
     matched = _matched(1, 2)
     mock_uow = _make_mock_uow()
@@ -340,14 +255,6 @@ async def test_save_translations_creates_phrases_and_variants(
 async def test_save_translations_marks_missing_ids_as_failed(
     phrase_translation_service: PhraseTranslationService,
 ) -> None:
-    """IDs sent but absent from matched must be marked TRANSLATING_FAILED
-
-    :param:
-        phrase_translation_service: service fixture
-
-    :returns:
-        None
-    """
     batch = [_make_phrase(1), _make_phrase(2), _make_phrase(3)]
     matched = _matched(1)
     mock_uow = _make_mock_uow()
@@ -371,14 +278,6 @@ async def test_save_translations_marks_missing_ids_as_failed(
 async def test_w3_translate_empty_batch_returns_skipped(
     phrase_translation_service: PhraseTranslationService, mocker
 ) -> None:
-    """
-    :param:
-        phrase_translation_service: service fixture
-        mocker: pytest-mock fixture
-
-    :returns:
-        None
-    """
     mocker.patch.object(
         phrase_translation_service, "_fetch_batch", new=AsyncMock(return_value=[])
     )
@@ -390,15 +289,6 @@ async def test_w3_translate_empty_batch_returns_skipped(
 async def test_w3_translate_success(
     phrase_translation_service: PhraseTranslationService, mocker
 ) -> None:
-    """Full chain: fake LLM returns structured output; end-to-end result is correct
-
-    :param:
-        phrase_translation_service: service fixture
-        mocker: pytest-mock fixture
-
-    :returns:
-        None
-    """
     phrases = [_make_phrase(1), _make_phrase(2)]
     tr = _translation_response(1, 2)
 
@@ -436,15 +326,6 @@ async def test_w3_translate_success(
 async def test_w3_translate_chain_failure_marks_all_failed(
     phrase_translation_service: PhraseTranslationService, mocker
 ) -> None:
-    """Chain error must mark all sent phrases as TRANSLATING_FAILED and raise TranslationPipelineException
-
-    :param:
-        phrase_translation_service: service fixture
-        mocker: pytest-mock fixture
-
-    :returns:
-        None
-    """
     phrases = [_make_phrase(1), _make_phrase(2)]
 
     async def _fail(_):
