@@ -1,19 +1,34 @@
+import asyncio
 import json
 import logging
 from typing import Any
 
-from pydantic import ValidationError
+from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.runnables import RunnableLambda
+from langchain_mistralai import ChatMistralAI
+from pydantic import SecretStr
 
 from app.common.enums import LangEnum, PhraseStatusEnum
+from app.common.exceptions import TranslationPipelineException
 from app.common.logging import log_decorator, logger
+from app.core.config import settings
 from app.models.phrases import Phrase
-from app.pyd.ai_schemas import MistralResponse, TranslatedPhrase
+from app.pyd.ai_schemas import TranslationResponse
 from app.services.base import BaseService
 from app.services.prompt_service import PromptService
+
+_W3_MODEL = settings.MISTRAL_MODEL
+_w3_llm = ChatMistralAI(
+    model_name=_W3_MODEL,
+    api_key=SecretStr(settings.MISTRAL_API_KEY),
+    timeout=settings.MISTRAL_TIMEOUT_SEC,
+)
 
 
 class PhraseTranslationService(BaseService):
     """W3 worker service: fetches generated phrases, translates them via Mistral, saves results"""
+
+    _llm = _w3_llm
 
     @log_decorator(level=logging.INFO)
     async def _fetch_batch(self, batch_size: int) -> list[Phrase]:
@@ -73,27 +88,19 @@ class PhraseTranslationService(BaseService):
         return {r.phrase_id: r.variants for r in records}
 
     @log_decorator(level=logging.INFO)
-    async def _call_mistral(
-        self, batch: list[Phrase], variants: dict[int, dict[str, Any]], lang: str
-    ) -> str | None:
-        """Send a batch of phrases with their variants to Mistral and return the raw JSON response
+    async def _build_w3_message(self, data: dict) -> list[BaseMessage]:
+        """Build system + user messages for the W3 translation call
 
         :param:
-            batch: list of Phrase objects to translate
-            variants: dict of {phrase_id: variants_dict} with tone variants per phrase
-            lang: source language code used to select the system prompt ('ru' or 'en')
+            data: dict with 'batch' (list[Phrase]), 'variants' (dict), and 'lang' (str)
 
         :returns:
-            raw: raw JSON string from Mistral, or None on failure
+            messages: [SystemMessage, HumanMessage] ready for the LLM
         """
-        if not self.ai_client.supports_chat:
-            logger.error("ai_client does not support chat")
-            return None
-        try:
-            system = PromptService.get("mistral_translate", lang)
-        except ValueError as exc:
-            logger.error("No prompt for lang=%s: %s", lang, exc)
-            return None
+        batch: list[Phrase] = data["batch"]
+        variants: dict[int, dict[str, Any]] = data["variants"]
+        lang: str = data["lang"]
+        system = PromptService.get("mistral_translate", lang)
         payload = json.dumps(
             [
                 {
@@ -106,31 +113,51 @@ class PhraseTranslationService(BaseService):
             ],
             ensure_ascii=False,
         )
-        return await self.ai_client.chat(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": payload},
-            ],
-            options={"response_format": {"type": "json_object"}},
-            operation="w3_translate",
-        )
+        return [SystemMessage(content=system), HumanMessage(content=payload)]
 
-    def _parse_w3_response(self, raw: str) -> dict[int, dict[str, Any]]:
-        """Validate and parse the Mistral JSON response into a phrase_id → translation mapping
+    @log_decorator(level=logging.INFO)
+    async def _fire_token_task(self, data: dict) -> TranslationResponse:
+        """Publish token usage to Redis Streams and return the parsed response
 
         :param:
-            raw: raw JSON string from Mistral
+            data: dict with 'raw' (AIMessage) and 'parsed' (TranslationResponse)
 
         :returns:
-            matched: dict of {original_phrase_id: {translated: str, variants: dict}}
+            parsed: the structured response from the LLM
         """
-        try:
-            data = MistralResponse[TranslatedPhrase].model_validate_json(raw)
-        except ValidationError as exc:
-            logger.error("Failed to validate w3 response: %s", exc)
-            return {}
-        result = {}
-        for item in data.results:
+        parsed: TranslationResponse | None = data.get("parsed")
+        if parsed is None:
+            raise TranslationPipelineException(
+                detail="LLM returned invalid structured output"
+            )
+        usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
+        asyncio.create_task(
+            self.queue_client.xadd(
+                settings.REDIS_TOKENS_STREAM,
+                {
+                    "model": _W3_MODEL,
+                    "operation": "w3_translate",
+                    "input_tokens": str(usage.get("input_tokens", 0)),
+                    "output_tokens": str(usage.get("output_tokens", 0)),
+                },
+            )
+        )
+        return parsed
+
+    @log_decorator(level=logging.INFO)
+    async def _parse_translations(
+        self, parsed: TranslationResponse
+    ) -> dict[int, dict[str, Any]]:
+        """Convert structured LLM response into a phrase_id → translation mapping
+
+        :param:
+            parsed: validated TranslationResponse from the LLM
+
+        :returns:
+            matched: dict of {phrase_id: {"translated": str, "variants": dict}}
+        """
+        result: dict[int, dict[str, Any]] = {}
+        for item in parsed.results:
             translated = item.translated.strip()
             if not translated:
                 continue
@@ -143,43 +170,31 @@ class PhraseTranslationService(BaseService):
         return result
 
     @log_decorator(level=logging.INFO)
-    async def w3_translate(self, batch_size: int) -> dict[str, int]:
-        """Run one W3 cycle: fetch → get variants → call Mistral → save translations → mark done/failed
+    async def _save_translations(
+        self,
+        matched: dict[int, dict[str, Any]],
+        sent_ids: set[int],
+        batch: list[Phrase],
+        opposite_lang: str,
+    ) -> dict[str, int]:
+        """Persist translated phrases, their variants, and update source phrase statuses
 
         :param:
-            batch_size: number of phrases per Mistral call
+            matched: phrase_id → {"translated", "variants"} from the LLM
+            sent_ids: set of all phrase IDs sent to the LLM in this batch
+            batch: original Phrase objects (used for tag lookup)
+            opposite_lang: target language code for new translated phrases
 
         :returns:
             result: dict with 'processed', 'failed', and 'skipped' counts
         """
-        # 1. Fetch a batch of eligible phrases
-        batch = await self._fetch_batch(batch_size)
-        if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
-
-        sent_ids = {p.id for p in batch}
-        lang_raw = batch[0].lang
-        actual_lang = (
-            lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)
-        )
-        opposite_lang = "en" if actual_lang == "ru" else "ru"
-
-        # 2. Fetch existing tone variants for all batch phrases
-        variants = await self._fetch_variants(list(sent_ids))
-
-        # 3. Call Mistral to translate the batch in one request
-        raw = await self._call_mistral(batch, variants, actual_lang)
-        matched = self._parse_w3_response(raw) if raw else {}
-
-        # 4. Compute which phrase IDs were returned and which failed
         returned_ids = set(matched.keys())
         failed_ids = sent_ids - returned_ids
 
-        # 5. Persist translated phrases, their variants, and update source phrase statuses
         async with self.uow_factory as uow:
             if matched:
                 id_to_tag = {p.id: p.tag for p in batch}
-
+                # 1. Insert translated texts as new Phrase rows in the target language
                 phrase_rows = [
                     {
                         "original": matched[pid]["translated"],
@@ -191,11 +206,13 @@ class PhraseTranslationService(BaseService):
                 ]
                 await uow.phrase_repository.bulk_create(phrase_rows)
 
+                # 2. Resolve auto-assigned IDs for the just-inserted translations
                 translated_texts = [matched[pid]["translated"] for pid in returned_ids]
                 text_to_id = await uow.phrase_repository.get_ids_by_originals(
                     originals=translated_texts, lang=opposite_lang
                 )
 
+                # 3. Upsert tone variants for each new translated phrase
                 variant_rows = [
                     {
                         "phrase_id": text_to_id[matched[pid]["translated"]],
@@ -207,6 +224,7 @@ class PhraseTranslationService(BaseService):
                 if variant_rows:
                     await uow.phrase_data_repository.bulk_upsert_variants(variant_rows)
 
+            # 4. Update source phrase statuses (DONE / FAILED)
             if returned_ids:
                 logger.info(f"[W3, translating]: returned ids {returned_ids}")
                 await uow.phrase_repository.update_status(
@@ -223,3 +241,59 @@ class PhraseTranslationService(BaseService):
             "failed": len(failed_ids),
             "skipped": 0,
         }
+
+    @log_decorator(level=logging.INFO)
+    async def w3_translate(self, batch_size: int) -> dict[str, int]:
+        """Run one W3 cycle: fetch → get variants → call Mistral → save translations → mark done/failed
+
+        :param:
+            batch_size: number of phrases per Mistral call
+
+        :returns:
+            result: dict with 'processed', 'failed', and 'skipped' counts
+        """
+        batch = await self._fetch_batch(batch_size)
+        if not batch:
+            return {"processed": 0, "failed": 0, "skipped": 1}
+
+        lang_raw = batch[0].lang
+        lang = lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)
+        opposite_lang = "en" if lang == "ru" else "ru"
+        sent_ids = {p.id for p in batch}
+
+        # 1. Attach structured output schema to the LLM
+        llm = self._llm.with_structured_output(
+            TranslationResponse, method="json_mode", include_raw=True
+        )
+
+        # 3. Bind batch context into the _save_translations step
+        async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict:
+            return await self._save_translations(
+                matched, sent_ids, batch, opposite_lang
+            )
+
+        # 4. Assemble the full LangChain processing chain
+        chain = (
+            RunnableLambda(self._build_w3_message)
+            | llm
+            | RunnableLambda(self._fire_token_task)
+            | RunnableLambda(self._parse_translations)
+            | RunnableLambda(_save_for_batch)
+        )
+
+        # 5. Invoke the chain; mark all phrases as failed on any error
+        try:
+            variants = await self._fetch_variants(list(sent_ids))
+            return await chain.ainvoke(
+                {"batch": batch, "variants": variants, "lang": lang}
+            )
+        except Exception as exc:
+            if not isinstance(exc, TranslationPipelineException):
+                logger.error("[W3] translation failed: %s", exc, exc_info=exc)
+            async with self.uow_factory as uow:
+                await uow.phrase_repository.update_status(
+                    ids=list(sent_ids), status=PhraseStatusEnum.TRANSLATING_FAILED
+                )
+            if isinstance(exc, TranslationPipelineException):
+                raise
+            raise TranslationPipelineException(detail=str(exc)) from exc
