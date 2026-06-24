@@ -128,7 +128,7 @@ class PhraseDataService(BaseService):
         """Convert structured LLM response into a phrase_id → variants mapping
 
         :param:
-            parsed: validated MistralResponse from the LLM
+            parsed: validated VariantsResponse from the LLM
 
         :returns:
             matched: dict of phrase_id → tone variants dict

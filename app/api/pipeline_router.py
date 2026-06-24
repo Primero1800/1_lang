@@ -6,6 +6,7 @@ from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, 
 from app.common.exceptions import (
     GenerationPipelineException,
     IntegrityDataException,
+    TranslationPipelineException,
     VisionPipelineException,
 )
 from app.common.logging import log_decorator
@@ -151,11 +152,8 @@ async def w3_translate(
     """
     try:
         return await phrase_translation_service.w3_translate(batch_size=batch_size)
-    except IntegrityDataException as e:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Integrity constraint violation during translation",
-        ) from e
+    except TranslationPipelineException as e:
+        return {"processed": 0, "failed": 0, "skipped": 0, "error": str(e.detail)}
 
 
 @router.post(

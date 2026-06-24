@@ -53,6 +53,8 @@ class W2GenerateResponse(WorkerBatchResponse):
 class W3TranslateResponse(WorkerBatchResponse):
     """W3 translation batch result"""
 
+    error: str | None = None
+
 
 class W4EmbedResponse(WorkerBatchResponse):
     """W4 embedding batch result"""
