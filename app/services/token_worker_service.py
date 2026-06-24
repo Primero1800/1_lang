@@ -148,7 +148,7 @@ class TokenWorkerService:
                 exc,
                 exc_info=exc,
             )
-            return True
+            raise
 
         logger.debug(
             "[token_worker] processed %d message(s), %d row(s) upserted",

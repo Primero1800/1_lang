@@ -14,11 +14,6 @@ from app.services.phrase_data_service import PhraseDataService
 
 @pytest.fixture
 def phrase_data_service() -> PhraseDataService:
-    """
-    :returns:
-        service: PhraseDataService with mocked infrastructure; queue_client is AsyncMock
-        so asyncio.create_task(queue_client.xadd(...)) works in _fire_token_task
-    """
     base_deps = MagicMock(spec=BaseDeps)
     base_deps.uow_factory = MagicMock()
     base_deps.ai_client = MagicMock()
@@ -69,13 +64,6 @@ def _variants_response(*phrase_ids: int) -> VariantsResponse:
 async def test_fetch_batch_returns_empty_when_nothing_ready(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     mock_uow = _make_mock_uow()
     mock_uow.phrase_repository.get_first_for_processing.return_value = None
     phrase_data_service.uow_factory = mock_uow
@@ -91,13 +79,6 @@ async def test_fetch_batch_returns_empty_when_nothing_ready(
 async def test_fetch_batch_returns_batch_and_marks_in_progress(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     first = _make_phrase(1)
     rest = [_make_phrase(2), _make_phrase(3)]
     mock_uow = _make_mock_uow()
@@ -119,13 +100,6 @@ async def test_fetch_batch_returns_batch_and_marks_in_progress(
 async def test_build_w2_message_returns_system_and_human(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     messages = await phrase_data_service._build_w2_message(
         {"batch": [_make_phrase(1)], "lang": "ru"}
     )
@@ -138,14 +112,6 @@ async def test_build_w2_message_returns_system_and_human(
 async def test_build_w2_message_payload_contains_phrase_id(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """HumanMessage content must be valid JSON with id, phrase, and tag fields
-
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     p = _make_phrase(42)
     p.original = "walks fast"
     p.tag = "behavior"
@@ -163,13 +129,6 @@ async def test_build_w2_message_payload_contains_phrase_id(
 async def test_fire_token_task_raises_when_parsed_is_none(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     with pytest.raises(GenerationPipelineException):
         await phrase_data_service._fire_token_task({"raw": None, "parsed": None})
 
@@ -178,13 +137,6 @@ async def test_fire_token_task_raises_when_parsed_is_none(
 async def test_fire_token_task_returns_variants_response(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     vr = _variants_response(1)
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 50, "output_tokens": 30}
@@ -199,14 +151,6 @@ async def test_fire_token_task_returns_variants_response(
 async def test_fire_token_task_schedules_xadd(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """queue_client.xadd must be called once with token usage payload
-
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     vr = _variants_response(1)
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 50, "output_tokens": 30}
@@ -224,13 +168,6 @@ async def test_fire_token_task_schedules_xadd(
 async def test_parse_variants_maps_ids_to_dicts(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_data_service._parse_variants(_variants_response(1, 2))
     assert set(result.keys()) == {1, 2}
     assert "A" in result[1]
@@ -241,14 +178,6 @@ async def test_parse_variants_maps_ids_to_dicts(
 async def test_parse_variants_skips_all_none_entry(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """Phrase with all-None tone slots must be excluded from the result
-
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     vr = VariantsResponse(results=[PhraseVariants(id=99)])
     result = await phrase_data_service._parse_variants(vr)
     assert result == {}
@@ -261,13 +190,6 @@ async def test_parse_variants_skips_all_none_entry(
 async def test_save_results_persists_and_returns_counts(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     matched = {1: {"A": "x"}, 2: {"A": "y"}}
     mock_uow = _make_mock_uow()
     phrase_data_service.uow_factory = mock_uow
@@ -283,14 +205,6 @@ async def test_save_results_persists_and_returns_counts(
 async def test_save_results_marks_missing_ids_as_failed(
     phrase_data_service: PhraseDataService,
 ) -> None:
-    """IDs sent but absent from matched must be marked GENERATING_FAILED
-
-    :param:
-        phrase_data_service: service fixture
-
-    :returns:
-        None
-    """
     matched = {1: {"A": "x"}}
     mock_uow = _make_mock_uow()
     phrase_data_service.uow_factory = mock_uow
@@ -309,14 +223,6 @@ async def test_save_results_marks_missing_ids_as_failed(
 async def test_w2_generate_empty_batch_returns_skipped(
     phrase_data_service: PhraseDataService, mocker
 ) -> None:
-    """
-    :param:
-        phrase_data_service: service fixture
-        mocker: pytest-mock fixture
-
-    :returns:
-        None
-    """
     mocker.patch.object(
         phrase_data_service, "_fetch_batch", new=AsyncMock(return_value=[])
     )
@@ -328,15 +234,6 @@ async def test_w2_generate_empty_batch_returns_skipped(
 async def test_w2_generate_success(
     phrase_data_service: PhraseDataService, mocker
 ) -> None:
-    """Full chain: fake LLM returns structured output; end-to-end result is correct
-
-    :param:
-        phrase_data_service: service fixture
-        mocker: pytest-mock fixture
-
-    :returns:
-        None
-    """
     phrases = [_make_phrase(1), _make_phrase(2)]
     vr = _variants_response(1, 2)
 
@@ -364,15 +261,6 @@ async def test_w2_generate_success(
 async def test_w2_generate_chain_failure_marks_all_failed(
     phrase_data_service: PhraseDataService, mocker
 ) -> None:
-    """Chain error must mark all sent phrases as GENERATING_FAILED and raise GenerationPipelineException
-
-    :param:
-        phrase_data_service: service fixture
-        mocker: pytest-mock fixture
-
-    :returns:
-        None
-    """
     phrases = [_make_phrase(1), _make_phrase(2)]
 
     async def _fail(_):

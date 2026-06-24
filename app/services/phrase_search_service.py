@@ -13,7 +13,7 @@ from app.services.prompt_service import PromptService
 from app.uow import UnitOfWork
 
 
-class TestService(BaseService):
+class PhraseSearchService(BaseService):
     """T1 search test service: vision → embed → Qdrant search pipeline"""
 
     def __init__(

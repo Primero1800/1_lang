@@ -7,7 +7,7 @@ from app.common.exceptions import VectorDBException
 from app.common.logging import log_decorator
 from app.dependencies.services import get_test_service_without_session
 from app.pyd.requests import SearchSettings, TagExclusionFilters
-from app.services.test_service import TestService
+from app.services.phrase_search_service import PhraseSearchService
 
 router = APIRouter(
     prefix="/test_routes",
@@ -38,7 +38,9 @@ router = APIRouter(
 )
 @log_decorator(level=logging.INFO)
 async def t1_search(
-    test_service: Annotated[TestService, Depends(get_test_service_without_session)],
+    test_service: Annotated[
+        PhraseSearchService, Depends(get_test_service_without_session)
+    ],
     image: Annotated[UploadFile, File()],
     filters: Annotated[TagExclusionFilters, Depends()],
     search_settings: Annotated[SearchSettings, Depends()],
