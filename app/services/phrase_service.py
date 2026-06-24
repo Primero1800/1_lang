@@ -1,4 +1,3 @@
-import asyncio
 import base64
 import logging
 import re
@@ -77,16 +76,11 @@ class PhraseService(BaseService):
                 detail="LLM returned invalid structured output"
             )
         usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
-        asyncio.create_task(
-            self.queue_client.xadd(
-                settings.REDIS_TOKENS_STREAM,
-                {
-                    "model": _VISION_MODEL,
-                    "operation": "w1_vision",
-                    "input_tokens": str(usage.get("input_tokens", 0)),
-                    "output_tokens": str(usage.get("output_tokens", 0)),
-                },
-            )
+        self._queue_token_usage(
+            model=_VISION_MODEL,
+            operation="w1_vision",
+            input_tokens=usage.get("input_tokens", 0),
+            output_tokens=usage.get("output_tokens", 0),
         )
         return parsed
 

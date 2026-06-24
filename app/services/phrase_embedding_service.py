@@ -1,4 +1,3 @@
-import asyncio
 import logging
 
 from langchain_core.runnables import RunnableLambda
@@ -69,16 +68,10 @@ class PhraseEmbeddingService(BaseService):
             raise EmbeddingPipelineException(
                 detail=f"Vector count mismatch: got {len(vectors)}, expected {len(batch)}"
             )
-        asyncio.create_task(
-            self.queue_client.xadd(
-                settings.REDIS_TOKENS_STREAM,
-                {
-                    "model": _W4_MODEL,
-                    "operation": "w4_embed",
-                    "input_tokens": str(input_tokens),
-                    "output_tokens": "0",
-                },
-            )
+        self._queue_token_usage(
+            model=_W4_MODEL,
+            operation="w4_embed",
+            input_tokens=input_tokens,
         )
         return {batch[i].id: vectors[i] for i in range(len(batch))}
 
