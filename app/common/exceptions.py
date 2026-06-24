@@ -81,3 +81,7 @@ class VisionPipelineException(BaseCustomException):
 
 class GenerationPipelineException(BaseCustomException):
     """Raised when the W2 generation chain fails at any step"""
+
+
+class TranslationPipelineException(BaseCustomException):
+    """Raised when the W3 translation chain fails at any step"""
