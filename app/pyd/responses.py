@@ -44,19 +44,21 @@ class WorkerBatchResponse(BaseModel):
     skipped: int
 
 
-class W2GenerateResponse(WorkerBatchResponse):
+class WorkerBatchWithErrorResponse(WorkerBatchResponse):
+    """Worker batch result with optional pipeline error field"""
+
+    error: str | None = None
+
+
+class W2GenerateResponse(WorkerBatchWithErrorResponse):
     """W2 variant generation batch result"""
 
-    error: str | None = None
 
-
-class W3TranslateResponse(WorkerBatchResponse):
+class W3TranslateResponse(WorkerBatchWithErrorResponse):
     """W3 translation batch result"""
 
-    error: str | None = None
 
-
-class W4EmbedResponse(WorkerBatchResponse):
+class W4EmbedResponse(WorkerBatchWithErrorResponse):
     """W4 embedding batch result"""
 
 
