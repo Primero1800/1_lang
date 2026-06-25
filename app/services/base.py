@@ -2,7 +2,6 @@ import asyncio
 from dataclasses import dataclass
 from typing import Any, Protocol
 
-from app.adapters.ai_client import AIClientAbstract
 from app.adapters.queue_client import MessageQueueClientAbstract
 from app.adapters.vector_client import VectorClientAbstract
 from app.core.config import settings
@@ -14,8 +13,6 @@ class BaseDeps:
     """Infrastructure dependencies shared across all services"""
 
     uow_factory: UnitOfWork
-    ai_client: AIClientAbstract
-    ai_client2: AIClientAbstract
     vector_client: VectorClientAbstract
     vector_client_main: VectorClientAbstract
     queue_client: MessageQueueClientAbstract
@@ -52,8 +49,6 @@ class BaseService(BaseServiceAbstract):
         """
         self.uow_factory = base_deps.uow_factory
         self.uow = uow
-        self.ai_client = base_deps.ai_client
-        self.ai_client2 = base_deps.ai_client2
         self.vector_client = base_deps.vector_client
         self.vector_client_main = base_deps.vector_client_main
         self.queue_client = base_deps.queue_client

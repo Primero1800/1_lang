@@ -7,7 +7,6 @@ from app.common.logging import logger
 from app.core.config import settings
 from app.core.database import initialize_db, shutdown_db
 from app.dependencies.infrastructure import (
-    get_aiohttp_session,
     get_queue_client,
     get_vector_client,
     get_vector_client_main,
@@ -42,20 +41,18 @@ class AppLifecycle:
         """
         # 1. Initialize database connection pool
         await self._initialize_core()
-        # 2. Create shared aiohttp session
-        self.aiohttp_session = await get_aiohttp_session()
-        # 3. Create vector database client (local bcp)
+        # 2. Create vector database client (local bcp)
         self.vector_client = await get_vector_client()
-        # 4. Start vector client and ensure collection exists
+        # 3. Start vector client and ensure collection exists
         await self.vector_client.start()
-        # 5. Start remote (main) vector client if enabled
+        # 4. Start remote (main) vector client if enabled
         if settings.QDRANT_MAIN_ENABLED:
             self.vector_client_main = await get_vector_client_main()
             await self.vector_client_main.start()
-        # 6. Start Message queue client
+        # 5. Start Message queue client
         self.queue_client = await get_queue_client()
         await self.queue_client.start()
-        # 7. Start token usage background worker
+        # 6. Start token usage background worker
         self._token_worker = TokenWorkerService(self.queue_client)
         await self._token_worker.start()
 
@@ -67,8 +64,6 @@ class AppLifecycle:
         """
         if self._token_worker:
             await self._token_worker.stop()
-        if self.aiohttp_session:
-            await self.aiohttp_session.close()
         if self.vector_client:
             await self.vector_client.stop()
         if self.vector_client_main:
