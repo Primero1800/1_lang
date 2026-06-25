@@ -29,6 +29,9 @@ class PhraseSearchService(BaseService):
     """T1 search test service: vision → embed → Qdrant search pipeline"""
 
     _t1_embeddings = _t1_embeddings
+    _OPERATION = "t1_search"
+    _EMBED_OPERATION = "t1_embed"
+    _VISION_OPERATION = "t1_vision"
 
     def __init__(
         self,
@@ -114,9 +117,9 @@ class PhraseSearchService(BaseService):
             return output
 
         # 2. Assemble chain: embed → search + extract
-        chain = RunnableLambda(self._t1_embed_phrases) | RunnableLambda(
-            _search_and_extract
-        )
+        chain = (
+            RunnableLambda(self._t1_embed_phrases) | RunnableLambda(_search_and_extract)
+        ).with_config(run_name=self._OPERATION)
 
         # 3. Invoke chain; wrap unexpected errors in T1PipelineException
         try:
@@ -157,7 +160,7 @@ class PhraseSearchService(BaseService):
         # 3. Encode image and call the vision model
         image_b64 = base64.b64encode(image_raw).decode()
         raw = await self.ai_client.vision_chat(
-            images_b64=[image_b64], prompt=prompt, operation="t1_vision"
+            images_b64=[image_b64], prompt=prompt, operation=self._VISION_OPERATION
         )
         if not raw:
             logger.warning("[T1, step 1] vision returned empty response")
@@ -189,7 +192,7 @@ class PhraseSearchService(BaseService):
         logger.info(f"[T1] step 2 — embedded {len(vectors)}/{len(phrases)} phrase(s)")
         self._queue_token_usage(
             model=_T1_EMBED_MODEL,
-            operation="t1_embed",
+            operation=self._EMBED_OPERATION,
             input_tokens=input_tokens,
         )
         return dict(zip(tags, vectors))

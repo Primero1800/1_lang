@@ -54,6 +54,10 @@ jobs:
       REDIS_TOKENS_WORKER: main
       REDIS_TOKENS_BATCH_SIZE: 100
       REDIS_TOKENS_POLL_INTERVAL: 60
+      LANGCHAIN_TRACING_V2: false
+      LANGCHAIN_API_KEY: ""
+      LANGCHAIN_PROJECT: 1_Lang
+
 
     steps:
       - uses: actions/checkout@v4

@@ -28,6 +28,7 @@ class PhraseService(BaseService):
     """Service for processing images through the vision pipeline and persisting phrases"""
 
     _llm = _vision_llm
+    _OPERATION = "w1_vision"
 
     @log_decorator(level=logging.INFO)
     async def _encode_images(self, data: dict) -> dict:
@@ -78,7 +79,7 @@ class PhraseService(BaseService):
         usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
         self._queue_token_usage(
             model=_VISION_MODEL,
-            operation="w1_vision",
+            operation=self._OPERATION,
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
         )
@@ -163,7 +164,7 @@ class PhraseService(BaseService):
             | RunnableLambda(self._fire_token_task)
             | RunnableLambda(_build_rows_for_lang)
             | RunnableLambda(self._save_phrases)
-        )
+        ).with_config(run_name=self._OPERATION)
 
         # 4. Invoke the chain; map unexpected errors to VisionPipelineException
         try:
