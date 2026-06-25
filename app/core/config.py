@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     MISTRAL_API_KEY: str = ""
     MISTRAL_MODEL: str = "mistral-small-latest"
     MISTRAL_EMBED_MODEL: str = "mistral-embed"
+    MISTRAL_VISION_MODEL: str = "pixtral-12b-2409"
     MISTRAL_TIMEOUT_SEC: int = 60
     MISTRAL_VISION_TIMEOUT_SEC: int = 120
 

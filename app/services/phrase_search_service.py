@@ -4,7 +4,9 @@ import logging
 import re
 from typing import Any
 
+from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableLambda
+from langchain_mistralai import ChatMistralAI
 from pydantic import SecretStr
 from qdrant_client.models import ScoredPoint
 
@@ -18,6 +20,13 @@ from app.services.base import BaseDeps, BaseService
 from app.services.prompt_service import PromptService
 from app.uow import UnitOfWork
 
+_T1_VISION_MODEL = settings.MISTRAL_VISION_MODEL
+_t1_vision_llm = ChatMistralAI(
+    model_name=_T1_VISION_MODEL,
+    api_key=SecretStr(settings.MISTRAL_API_KEY),
+    timeout=settings.MISTRAL_VISION_TIMEOUT_SEC,
+)
+
 _T1_EMBED_MODEL = settings.MISTRAL_EMBED_MODEL
 _t1_embeddings = TrackedMistralEmbeddings(
     model=_T1_EMBED_MODEL,
@@ -26,8 +35,9 @@ _t1_embeddings = TrackedMistralEmbeddings(
 
 
 class PhraseSearchService(BaseService):
-    """T1 search test service: vision → embed → Qdrant search pipeline"""
+    """T1 search service: vision → embed → Qdrant search pipeline"""
 
+    _vision_llm = _t1_vision_llm
     _t1_embeddings = _t1_embeddings
     _OPERATION = "t1_search"
     _EMBED_OPERATION = "t1_embed"
@@ -85,45 +95,68 @@ class PhraseSearchService(BaseService):
             logger.warning("[T1] all tags restricted, returning message")
             return {"message": PromptService.get_restricted_message(lang)}
 
-        # Step 1: vision — outside chain (uses ai_client, not structured output)
-        gender, tag_phrases = await self._t1_get_phrases(
-            image_raw, lang=lang, allowed_tags=allowed_tags
-        )
-        logger.info(
-            f"[T1] step 1 — gender={gender}, extracted {len(tag_phrases)} phrase(s): {tag_phrases}"
-        )
-        if not tag_phrases:
-            return {}
-
-        # 1. Bind search context into the last chain step
-        async def _search_and_extract(
-            tag_vectors: dict[str, list[float]],
-        ) -> dict[str, Any]:
-            if not tag_vectors:
-                return {}
-            tags = list(tag_vectors.keys())
-            vectors = list(tag_vectors.values())
-            results = await self.vector_repository.search_batch(
-                vectors=vectors, tags=tags, lang=lang
+        # 1. Closure: build vision message from captured image_raw, lang, allowed_tags
+        async def _build_message(_: dict) -> list[HumanMessage]:
+            prompt = PromptService.get_t1_vision_prompt(
+                lang=lang, allowed_tags=allowed_tags
             )
-            total = sum(len(r) for r in results)
+            image_b64 = base64.b64encode(image_raw).decode()
+            return [
+                HumanMessage(
+                    content=[
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:image/jpeg;base64,{image_b64}"},
+                        },
+                        {"type": "text", "text": prompt},
+                    ]
+                )
+            ]
+
+        # 2. Closure: parse vision response, queue tokens, pass context forward
+        async def _process_vision(response: Any) -> dict:
+            usage = response.usage_metadata or {}
+            self._queue_token_usage(
+                model=_T1_VISION_MODEL,
+                operation=self._VISION_OPERATION,
+                input_tokens=usage.get("input_tokens", 0),
+                output_tokens=usage.get("output_tokens", 0),
+            )
+            raw = response.content if response.content else ""
+            if not raw:
+                logger.warning("[T1, step 1] vision returned empty response")
+                return {
+                    "gender": "male",
+                    "tag_phrases": {},
+                    "lang": lang,
+                    "mood_key": mood_key,
+                }
+            gender, tag_phrases = self._parse_vision_phrases(raw)
             logger.info(
-                f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)"
+                f"[T1] step 1 — gender={gender}, extracted {len(tag_phrases)} phrase(s): {tag_phrases}"
             )
-            output = self._t1_extract_variants(
-                results, mood_key=mood_key, gender=gender
-            )
-            logger.info(f"[T1] step 4 — {len(output)} unique original(s) in result")
-            return output
+            return {
+                "gender": gender,
+                "tag_phrases": tag_phrases,
+                "lang": lang,
+                "mood_key": mood_key,
+            }
 
-        # 2. Assemble chain: embed → search + extract
+        # 3. Assemble full pipeline chain
         chain = (
-            RunnableLambda(self._t1_embed_phrases) | RunnableLambda(_search_and_extract)
+            RunnableLambda(_build_message)
+            | self._vision_llm.with_config(
+                run_name=self._VISION_OPERATION,
+                metadata={"ls_hide_inputs": True},
+            )
+            | RunnableLambda(_process_vision)
+            | RunnableLambda(self._t1_embed_phrases)
+            | RunnableLambda(self._t1_search_extract)
         ).with_config(run_name=self._OPERATION)
 
-        # 3. Invoke chain; wrap unexpected errors in T1PipelineException
+        # 4. Invoke chain; wrap unexpected errors in T1PipelineException
         try:
-            return await chain.ainvoke(tag_phrases)
+            return await chain.ainvoke({"lang": lang, "mood_key": mood_key})
         except Exception as exc:
             if not isinstance(exc, T1PipelineException):
                 logger.error("[T1] pipeline failed: %s", exc, exc_info=exc)
@@ -132,58 +165,24 @@ class PhraseSearchService(BaseService):
             raise T1PipelineException(detail=str(exc)) from exc
 
     @log_decorator(level=logging.DEBUG)
-    async def _t1_get_phrases(
-        self,
-        image_raw: bytes,
-        lang: str,
-        allowed_tags: list[str],
-    ) -> tuple[str, dict[str, str]]:
-        """Send image to Mistral vision and return detected gender and one phrase per allowed tag
-
-        :param:
-            image_raw: raw image bytes
-            lang: target language code ('ru' or 'en')
-            allowed_tags: tag keys to request observations for
-
-        :returns:
-            gender: 'male' or 'female' (defaults to 'male' if undetermined)
-            tag_phrases: dict of {tag: observation phrase}
-        """
-        # 1. Skip if vision model is unavailable
-        if not self.ai_client.supports_vision:
-            logger.error("[T1, step 1] ai_client does not support vision")
-            return "male", {}
-        # 2. Build the vision prompt for the allowed tags
-        prompt = PromptService.get_t1_vision_prompt(
-            lang=lang, allowed_tags=allowed_tags
-        )
-        # 3. Encode image and call the vision model
-        image_b64 = base64.b64encode(image_raw).decode()
-        raw = await self.ai_client.vision_chat(
-            images_b64=[image_b64], prompt=prompt, operation=self._VISION_OPERATION
-        )
-        if not raw:
-            logger.warning("[T1, step 1] vision returned empty response")
-            return "male", {}
-        # 4. Parse gender and per-tag phrases from the vision response
-        gender, tag_phrases = self._parse_vision_phrases(raw)
-        logger.info(
-            f"[T1, step 1] gender={gender}, parsed {len(tag_phrases)} phrase(s)"
-        )
-        return gender, tag_phrases
-
-    @log_decorator(level=logging.DEBUG)
-    async def _t1_embed_phrases(
-        self, tag_phrases: dict[str, str]
-    ) -> dict[str, list[float]]:
+    async def _t1_embed_phrases(self, inputs: dict[str, Any]) -> dict[str, Any]:
         """Embed tagged observation phrases using search_query prefix strategy
 
         :param:
-            tag_phrases: dict of {tag: observation phrase}
+            inputs: dict with 'gender', 'tag_phrases', 'lang', 'mood_key'
 
         :returns:
-            tag_vectors: dict of {tag: embedding vector}, preserving input order
+            context: dict with 'gender', 'tag_vectors', 'lang', 'mood_key'
+                     tag_vectors is empty if tag_phrases was empty
         """
+        tag_phrases: dict[str, str] = inputs["tag_phrases"]
+        if not tag_phrases:
+            return {
+                "gender": inputs["gender"],
+                "tag_vectors": {},
+                "lang": inputs["lang"],
+                "mood_key": inputs["mood_key"],
+            }
         tags = list(tag_phrases.keys())
         phrases = list(tag_phrases.values())
         vectors, input_tokens = await self._t1_embeddings.aembed_with_usage(
@@ -195,7 +194,40 @@ class PhraseSearchService(BaseService):
             operation=self._EMBED_OPERATION,
             input_tokens=input_tokens,
         )
-        return dict(zip(tags, vectors))
+        return {
+            "gender": inputs["gender"],
+            "tag_vectors": dict(zip(tags, vectors)),
+            "lang": inputs["lang"],
+            "mood_key": inputs["mood_key"],
+        }
+
+    @log_decorator(level=logging.DEBUG)
+    async def _t1_search_extract(self, inputs: dict[str, Any]) -> dict[str, Any]:
+        """Search Qdrant for matching phrases and filter by mood and gender
+
+        :param:
+            inputs: dict with 'gender', 'tag_vectors', 'lang', 'mood_key'
+
+        :returns:
+            output: dict of {original: {tag: str, phrases: list[str]}}, empty if no vectors
+        """
+        tag_vectors: dict[str, list[float]] = inputs["tag_vectors"]
+        if not tag_vectors:
+            return {}
+        tags = list(tag_vectors.keys())
+        vectors = list(tag_vectors.values())
+        results = await self.vector_repository.search_batch(
+            vectors=vectors, tags=tags, lang=inputs["lang"]
+        )
+        total = sum(len(r) for r in results)
+        logger.info(
+            f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)"
+        )
+        output = self._t1_extract_variants(
+            results, mood_key=inputs["mood_key"], gender=inputs["gender"]
+        )
+        logger.info(f"[T1] step 4 — {len(output)} unique original(s) in result")
+        return output
 
     @staticmethod
     def _t1_extract_variants(

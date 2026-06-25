@@ -16,7 +16,7 @@ from app.pyd.ai_schemas import VisionOutput
 from app.services.base import BaseService
 from app.services.prompt_service import PromptService
 
-_VISION_MODEL = "pixtral-12b-2409"
+_VISION_MODEL = settings.MISTRAL_VISION_MODEL
 _vision_llm = ChatMistralAI(
     model_name=_VISION_MODEL,
     api_key=SecretStr(settings.MISTRAL_API_KEY),
