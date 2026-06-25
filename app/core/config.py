@@ -26,9 +26,6 @@ class Settings(BaseSettings):
 
     HEALTH_CHECK_TIMEOUT_SEC: int = 5
 
-    AIOHTTP_KEEPALIVE_TIMEOUT: int = 30
-    AIOHTTP_TIMEOUT_SECONDS: int = 30
-
     # [AI] Mistral
     MISTRAL_API_KEY: str = ""
     MISTRAL_MODEL: str = "mistral-small-latest"

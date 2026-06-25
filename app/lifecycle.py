@@ -1,4 +1,3 @@
-import aiohttp
 from fastapi import FastAPI
 
 from app.adapters.queue_client import MessageQueueClientAbstract
@@ -27,7 +26,6 @@ class AppLifecycle:
             None
         """
         self.app = app
-        self.aiohttp_session: aiohttp.ClientSession | None = None
         self.vector_client: VectorClientAbstract | None = None
         self.vector_client_main: VectorClientAbstract | None = None
         self.queue_client: MessageQueueClientAbstract | None = None
