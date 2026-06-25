@@ -89,3 +89,7 @@ class TranslationPipelineException(BaseCustomException):
 
 class EmbeddingPipelineException(BaseCustomException):
     """Raised when the W4 embedding chain fails at any step"""
+
+
+class T1PipelineException(BaseCustomException):
+    """Raised when the T1 vision→embed→search pipeline fails at any step"""

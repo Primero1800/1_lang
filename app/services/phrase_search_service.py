@@ -1,20 +1,34 @@
 import base64
+import json
 import logging
 import re
 from typing import Any
 
+from langchain_core.runnables import RunnableLambda
+from pydantic import SecretStr
 from qdrant_client.models import ScoredPoint
 
+from app.adapters.embeddings_client import TrackedMistralEmbeddings
+from app.common.exceptions import T1PipelineException
 from app.common.logging import log_decorator, logger
+from app.core.config import settings
 from app.pyd.requests import SearchSettings, TagExclusionFilters
 from app.repositories.phrase_vector_repository import PhraseVectorRepository
 from app.services.base import BaseDeps, BaseService
 from app.services.prompt_service import PromptService
 from app.uow import UnitOfWork
 
+_T1_EMBED_MODEL = settings.MISTRAL_EMBED_MODEL
+_t1_embeddings = TrackedMistralEmbeddings(
+    model=_T1_EMBED_MODEL,
+    api_key=SecretStr(settings.MISTRAL_API_KEY),
+)
+
 
 class PhraseSearchService(BaseService):
     """T1 search test service: vision → embed → Qdrant search pipeline"""
+
+    _t1_embeddings = _t1_embeddings
 
     def __init__(
         self,
@@ -53,6 +67,7 @@ class PhraseSearchService(BaseService):
             result: dict of {original: {tag: str, phrases: list[str]}}
         """
         lang = search_settings.lang.value
+        mood_key = search_settings.mood.value
         all_tags = ["behavior", "appearance", "age", "mood", "posture", "hairstyle"]
         filter_map = {
             "behavior": filters.not_behavior,
@@ -67,7 +82,7 @@ class PhraseSearchService(BaseService):
             logger.warning("[T1] all tags restricted, returning message")
             return {"message": PromptService.get_restricted_message(lang)}
 
-        # Step 1: extract gender and one phrase per allowed tag from the image
+        # Step 1: vision — outside chain (uses ai_client, not structured output)
         gender, tag_phrases = await self._t1_get_phrases(
             image_raw, lang=lang, allowed_tags=allowed_tags
         )
@@ -77,32 +92,41 @@ class PhraseSearchService(BaseService):
         if not tag_phrases:
             return {}
 
-        # Step 2: embed each phrase with search_query prefix
-        tag_vectors = await self._t1_embed_phrases(tag_phrases)
-        logger.info(
-            f"[T1] step 2 — embedded {len(tag_vectors)}/{len(tag_phrases)} phrase(s)"
-        )
-        if not tag_vectors:
-            return {}
+        # 1. Bind search context into the last chain step
+        async def _search_and_extract(
+            tag_vectors: dict[str, list[float]],
+        ) -> dict[str, Any]:
+            if not tag_vectors:
+                return {}
+            tags = list(tag_vectors.keys())
+            vectors = list(tag_vectors.values())
+            results = await self.vector_repository.search_batch(
+                vectors=vectors, tags=tags, lang=lang
+            )
+            total = sum(len(r) for r in results)
+            logger.info(
+                f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)"
+            )
+            output = self._t1_extract_variants(
+                results, mood_key=mood_key, gender=gender
+            )
+            logger.info(f"[T1] step 4 — {len(output)} unique original(s) in result")
+            return output
 
-        # Step 3: batch search — each vector searches within its own tag
-        tags = list(tag_vectors.keys())
-        vectors = list(tag_vectors.values())
-        results = await self.vector_repository.search_batch(
-            vectors=vectors,
-            tags=tags,
-            lang=lang,
-        )
-        total = sum(len(r) for r in results)
-        logger.info(
-            f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)"
+        # 2. Assemble chain: embed → search + extract
+        chain = RunnableLambda(self._t1_embed_phrases) | RunnableLambda(
+            _search_and_extract
         )
 
-        # Step 4: extract variants by mood and gender, group by original
-        mood_key = search_settings.mood.value
-        output = self._t1_extract_variants(results, mood_key=mood_key, gender=gender)
-        logger.info(f"[T1] step 4 — {len(output)} unique original(s) in result")
-        return output
+        # 3. Invoke chain; wrap unexpected errors in T1PipelineException
+        try:
+            return await chain.ainvoke(tag_phrases)
+        except Exception as exc:
+            if not isinstance(exc, T1PipelineException):
+                logger.error("[T1] pipeline failed: %s", exc, exc_info=exc)
+            if isinstance(exc, T1PipelineException):
+                raise
+            raise T1PipelineException(detail=str(exc)) from exc
 
     @log_decorator(level=logging.DEBUG)
     async def _t1_get_phrases(
@@ -145,6 +169,31 @@ class PhraseSearchService(BaseService):
         )
         return gender, tag_phrases
 
+    @log_decorator(level=logging.DEBUG)
+    async def _t1_embed_phrases(
+        self, tag_phrases: dict[str, str]
+    ) -> dict[str, list[float]]:
+        """Embed tagged observation phrases using search_query prefix strategy
+
+        :param:
+            tag_phrases: dict of {tag: observation phrase}
+
+        :returns:
+            tag_vectors: dict of {tag: embedding vector}, preserving input order
+        """
+        tags = list(tag_phrases.keys())
+        phrases = list(tag_phrases.values())
+        vectors, input_tokens = await self._t1_embeddings.aembed_with_usage(
+            phrases, input_type="search_query"
+        )
+        logger.info(f"[T1] step 2 — embedded {len(vectors)}/{len(phrases)} phrase(s)")
+        self._queue_token_usage(
+            model=_T1_EMBED_MODEL,
+            operation="t1_embed",
+            input_tokens=input_tokens,
+        )
+        return dict(zip(tags, vectors))
+
     @staticmethod
     def _t1_extract_variants(
         results: list[list[ScoredPoint]],
@@ -181,41 +230,6 @@ class PhraseSearchService(BaseService):
                     }
         return output
 
-    @log_decorator(level=logging.DEBUG)
-    async def _t1_embed_phrases(
-        self, tag_phrases: dict[str, str]
-    ) -> dict[str, list[float]]:
-        """Embed tagged observation phrases using Mistral search_query strategy
-
-        :param:
-            tag_phrases: dict of {tag: observation phrase}
-
-        :returns:
-            tag_vectors: dict of {tag: embedding vector}, preserving input order
-        """
-        # 1. Skip if embed model is unavailable
-        if not self.ai_client.supports_embed:
-            logger.error("[T1, step 2] ai_client does not support embed")
-            return {}
-        # 2. Separate tag keys and phrase texts for the embed call
-        tags = list(tag_phrases.keys())
-        phrases = list(tag_phrases.values())
-        # 3. Embed all phrases in a single batch call
-        result = await self.ai_client.embed(
-            phrases, task_type="query", operation="t1_embed"
-        )
-        if not result:
-            logger.warning("[T1, step 2] embed returned empty result")
-            return {}
-        # 4. Normalise single-vector response to a list of vectors
-        vectors = (
-            result
-            if isinstance(result, list) and isinstance(result[0], list)
-            else [result]
-        )
-        # 5. Pair each tag with its corresponding embedding vector
-        return dict(zip(tags, vectors))
-
     @staticmethod
     def _parse_vision_phrases(raw: str) -> tuple[str, dict[str, str]]:
         """Parse raw vision output as JSON object with gender and per-tag phrases
@@ -227,8 +241,6 @@ class PhraseSearchService(BaseService):
             gender: 'male' or 'female' (defaults to 'male' on parse failure)
             tag_phrases: dict of {tag: phrase} parsed from the 'phrases' object
         """
-        import json
-
         # 1. Strip markdown code fence if present
         text = raw.strip()
         match = re.search(r"```(?:json)?\s*(.*?)```", text, re.DOTALL)

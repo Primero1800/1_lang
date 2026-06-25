@@ -16,7 +16,7 @@ def test_service() -> PhraseSearchService:
     base_deps.ai_client2 = MagicMock()
     base_deps.vector_client = MagicMock()
     base_deps.vector_client_main = MagicMock()
-    base_deps.queue_client = MagicMock()
+    base_deps.queue_client = AsyncMock()
     vector_repository = MagicMock(spec=PhraseVectorRepository)
     return PhraseSearchService(base_deps=base_deps, vector_repository=vector_repository)
 
@@ -195,33 +195,46 @@ def test_t1_extract_variants_empty_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_t1_embed_phrases_no_embed_support(
+async def test_t1_embed_phrases_empty_input_returns_empty(
     test_service: PhraseSearchService,
 ) -> None:
-    test_service.ai_client.supports_embed = False
-    result = await test_service._t1_embed_phrases({"behavior": "typing fast"})
+    test_service._t1_embeddings = MagicMock()
+    test_service._t1_embeddings.aembed_with_usage = AsyncMock(return_value=([], 0))
+    result = await test_service._t1_embed_phrases({})
     assert result == {}
 
 
 @pytest.mark.asyncio
-async def test_t1_embed_phrases_returns_empty_on_none_result(
+async def test_t1_embed_phrases_returns_tag_vector_map(
     test_service: PhraseSearchService,
 ) -> None:
-    test_service.ai_client.supports_embed = True
-    test_service.ai_client.embed = AsyncMock(return_value=None)
-    result = await test_service._t1_embed_phrases({"behavior": "typing fast"})
-    assert result == {}
+    import asyncio
 
-
-@pytest.mark.asyncio
-async def test_t1_embed_phrases_success(test_service: PhraseSearchService) -> None:
-    test_service.ai_client.supports_embed = True
-    test_service.ai_client.embed = AsyncMock(return_value=[[0.1, 0.2], [0.3, 0.4]])
+    test_service._t1_embeddings = MagicMock()
+    test_service._t1_embeddings.aembed_with_usage = AsyncMock(
+        return_value=([[0.1, 0.2], [0.3, 0.4]], 20)
+    )
     result = await test_service._t1_embed_phrases(
         {"behavior": "typing fast", "mood": "looking tired"}
     )
+    await asyncio.sleep(0)
     assert set(result.keys()) == {"behavior", "mood"}
     assert result["behavior"] == [0.1, 0.2]
+
+
+@pytest.mark.asyncio
+async def test_t1_embed_phrases_queues_token_usage(
+    test_service: PhraseSearchService,
+) -> None:
+    import asyncio
+
+    test_service._t1_embeddings = MagicMock()
+    test_service._t1_embeddings.aembed_with_usage = AsyncMock(
+        return_value=([[0.1, 0.2]], 15)
+    )
+    await test_service._t1_embed_phrases({"behavior": "typing fast"})
+    await asyncio.sleep(0)
+    test_service.queue_client.xadd.assert_called_once()
 
 
 # --- t1_search ---

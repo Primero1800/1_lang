@@ -3,7 +3,7 @@ from typing import Annotated, Any
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, status
 
-from app.common.exceptions import VectorDBException
+from app.common.exceptions import T1PipelineException, VectorDBException
 from app.common.logging import log_decorator
 from app.dependencies.services import get_test_service_without_session
 from app.pyd.requests import SearchSettings, TagExclusionFilters
@@ -69,6 +69,8 @@ async def t1_search(
             filters=filters,
             search_settings=search_settings,
         )
+    except T1PipelineException as e:
+        return {"error": str(e.detail)}
     except VectorDBException as e:
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
