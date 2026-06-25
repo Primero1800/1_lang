@@ -1,6 +1,9 @@
+import asyncio
 import json
 import pytest
 from unittest.mock import AsyncMock, MagicMock
+
+from langchain_core.runnables import RunnableLambda
 
 from app.pyd.requests import SearchSettings, TagExclusionFilters
 from app.repositories.phrase_vector_repository import PhraseVectorRepository
@@ -44,14 +47,17 @@ def _make_scored_point(
     return point
 
 
+def _fake_vision_response(phrases: dict, gender: str = "male"):
+    mock_response = MagicMock()
+    mock_response.usage_metadata = {}
+    mock_response.content = json.dumps({"gender": gender, "phrases": phrases})
+    return mock_response
+
+
 # --- _parse_vision_phrases ---
 
 
 def test_parse_vision_phrases_valid_json() -> None:
-    """
-    :returns:
-        None
-    """
     raw = json.dumps(
         {
             "gender": "female",
@@ -64,10 +70,6 @@ def test_parse_vision_phrases_valid_json() -> None:
 
 
 def test_parse_vision_phrases_invalid_json_defaults_to_male() -> None:
-    """
-    :returns:
-        None
-    """
     gender, tag_phrases = PhraseSearchService._parse_vision_phrases(
         "not json at all {{ broken"
     )
@@ -76,80 +78,17 @@ def test_parse_vision_phrases_invalid_json_defaults_to_male() -> None:
 
 
 def test_parse_vision_phrases_unknown_gender_defaults_to_male() -> None:
-    """Unknown gender values must be normalised to 'male'
-
-    :returns:
-        None
-    """
     raw = json.dumps({"gender": "alien", "phrases": {"behavior": "something"}})
     gender, _ = PhraseSearchService._parse_vision_phrases(raw)
     assert gender == "male"
 
 
 def test_parse_vision_phrases_strips_code_fence() -> None:
-    """Markdown code fences in the model response must be stripped before JSON parsing
-
-    :returns:
-        None
-    """
     inner = json.dumps({"gender": "male", "phrases": {"behavior": "looking focused"}})
     raw = f"```json\n{inner}\n```"
     gender, tag_phrases = PhraseSearchService._parse_vision_phrases(raw)
     assert gender == "male"
     assert tag_phrases == {"behavior": "looking focused"}
-
-
-# --- _t1_get_phrases ---
-
-
-@pytest.mark.asyncio
-async def test_t1_get_phrases_no_vision_support_returns_empty(
-    test_service: PhraseSearchService,
-) -> None:
-    """
-    :param:
-        test_service: service fixture
-
-    :returns:
-        None
-    """
-    test_service.ai_client.supports_vision = False
-    gender, phrases = await test_service._t1_get_phrases(b"img", "ru", ["behavior"])
-    assert gender == "male"
-    assert phrases == {}
-
-
-@pytest.mark.asyncio
-async def test_t1_get_phrases_vision_returns_none_returns_empty(
-    test_service: PhraseSearchService,
-) -> None:
-    """
-    :param:
-        test_service: service fixture
-
-    :returns:
-        None
-    """
-    test_service.ai_client.supports_vision = True
-    test_service.ai_client.vision_chat = AsyncMock(return_value=None)
-    gender, phrases = await test_service._t1_get_phrases(b"img", "ru", ["behavior"])
-    assert gender == "male"
-    assert phrases == {}
-
-
-@pytest.mark.asyncio
-async def test_t1_get_phrases_success(test_service: PhraseSearchService) -> None:
-    import json
-
-    test_service.ai_client.supports_vision = True
-    test_service.ai_client.vision_chat = AsyncMock(
-        return_value=json.dumps(
-            {"gender": "female", "phrases": {"behavior": "typing fast"}}
-        )
-    )
-    gender, phrases = await test_service._t1_get_phrases(b"img", "ru", ["behavior"])
-    assert gender == "female"
-    assert phrases == {"behavior": "typing fast"}
 
 
 # --- _t1_extract_variants ---
@@ -195,46 +134,104 @@ def test_t1_extract_variants_empty_input() -> None:
 
 
 @pytest.mark.asyncio
-async def test_t1_embed_phrases_empty_input_returns_empty(
+async def test_t1_embed_phrases_empty_tag_phrases_returns_empty_vectors(
     test_service: PhraseSearchService,
 ) -> None:
-    test_service._t1_embeddings = MagicMock()
-    test_service._t1_embeddings.aembed_with_usage = AsyncMock(return_value=([], 0))
-    result = await test_service._t1_embed_phrases({})
-    assert result == {}
+    result = await test_service._t1_embed_phrases(
+        {"tag_phrases": {}, "gender": "male", "lang": "ru", "mood_key": "C"}
+    )
+    assert result["tag_vectors"] == {}
 
 
 @pytest.mark.asyncio
-async def test_t1_embed_phrases_returns_tag_vector_map(
+async def test_t1_embed_phrases_returns_tag_vectors(
     test_service: PhraseSearchService,
 ) -> None:
-    import asyncio
-
     test_service._t1_embeddings = MagicMock()
     test_service._t1_embeddings.aembed_with_usage = AsyncMock(
         return_value=([[0.1, 0.2], [0.3, 0.4]], 20)
     )
     result = await test_service._t1_embed_phrases(
-        {"behavior": "typing fast", "mood": "looking tired"}
+        {
+            "tag_phrases": {"behavior": "typing fast", "mood": "looking tired"},
+            "gender": "male",
+            "lang": "ru",
+            "mood_key": "C",
+        }
     )
     await asyncio.sleep(0)
-    assert set(result.keys()) == {"behavior", "mood"}
-    assert result["behavior"] == [0.1, 0.2]
+    assert set(result["tag_vectors"].keys()) == {"behavior", "mood"}
+    assert result["tag_vectors"]["behavior"] == [0.1, 0.2]
 
 
 @pytest.mark.asyncio
 async def test_t1_embed_phrases_queues_token_usage(
     test_service: PhraseSearchService,
 ) -> None:
-    import asyncio
-
     test_service._t1_embeddings = MagicMock()
     test_service._t1_embeddings.aembed_with_usage = AsyncMock(
         return_value=([[0.1, 0.2]], 15)
     )
-    await test_service._t1_embed_phrases({"behavior": "typing fast"})
+    await test_service._t1_embed_phrases(
+        {
+            "tag_phrases": {"behavior": "typing fast"},
+            "gender": "male",
+            "lang": "ru",
+            "mood_key": "C",
+        }
+    )
     await asyncio.sleep(0)
     test_service.queue_client.xadd.assert_called_once()
+
+
+# --- _t1_search_extract ---
+
+
+@pytest.mark.asyncio
+async def test_t1_search_extract_empty_vectors_returns_empty(
+    test_service: PhraseSearchService,
+) -> None:
+    result = await test_service._t1_search_extract(
+        {"tag_vectors": {}, "gender": "male", "lang": "ru", "mood_key": "C"}
+    )
+    assert result == {}
+
+
+@pytest.mark.asyncio
+async def test_t1_search_extract_returns_matched_phrases(
+    test_service: PhraseSearchService,
+) -> None:
+    point = _make_scored_point(1, "original_1", "behavior")
+    test_service.vector_repository.search_batch = AsyncMock(return_value=[[point]])
+    result = await test_service._t1_search_extract(
+        {
+            "tag_vectors": {"behavior": [0.1, 0.2]},
+            "gender": "male",
+            "lang": "ru",
+            "mood_key": "C",
+        }
+    )
+    assert "original_1" in result
+    test_service.vector_repository.search_batch.assert_called_once()
+
+
+@pytest.mark.asyncio
+async def test_t1_search_extract_missing_mood_returns_empty(
+    test_service: PhraseSearchService,
+) -> None:
+    tone = {"male": ["phrase_m"]}
+    variants = {"A": tone}  # no "C"
+    point = _make_scored_point(1, "original_1", "behavior", variants=variants)
+    test_service.vector_repository.search_batch = AsyncMock(return_value=[[point]])
+    result = await test_service._t1_search_extract(
+        {
+            "tag_vectors": {"behavior": [0.1, 0.2]},
+            "gender": "male",
+            "lang": "ru",
+            "mood_key": "C",
+        }
+    )
+    assert result == {}
 
 
 # --- t1_search ---
@@ -260,11 +257,12 @@ async def test_t1_search_all_tags_restricted_returns_message(
 
 @pytest.mark.asyncio
 async def test_t1_search_empty_phrases_returns_empty(
-    test_service: PhraseSearchService, mocker
+    test_service: PhraseSearchService,
 ) -> None:
-    mocker.patch.object(
-        test_service, "_t1_get_phrases", new=AsyncMock(return_value=("male", {}))
-    )
+    async def _fake_vision(_):
+        return _fake_vision_response(phrases={})
+
+    test_service._vision_llm = RunnableLambda(_fake_vision)
     result = await test_service.t1_search(
         image_raw=b"img",
         filters=TagExclusionFilters(),
@@ -277,13 +275,21 @@ async def test_t1_search_empty_phrases_returns_empty(
 async def test_t1_search_empty_vectors_returns_empty(
     test_service: PhraseSearchService, mocker
 ) -> None:
+    async def _fake_vision(_):
+        return _fake_vision_response(phrases={"behavior": "typing fast"})
+
+    test_service._vision_llm = RunnableLambda(_fake_vision)
     mocker.patch.object(
         test_service,
-        "_t1_get_phrases",
-        new=AsyncMock(return_value=("male", {"behavior": "typing fast"})),
-    )
-    mocker.patch.object(
-        test_service, "_t1_embed_phrases", new=AsyncMock(return_value={})
+        "_t1_embed_phrases",
+        new=AsyncMock(
+            return_value={
+                "gender": "male",
+                "tag_vectors": {},
+                "lang": "ru",
+                "mood_key": "A",
+            }
+        ),
     )
     result = await test_service.t1_search(
         image_raw=b"img",
@@ -296,17 +302,25 @@ async def test_t1_search_empty_vectors_returns_empty(
 @pytest.mark.asyncio
 async def test_t1_search_success(test_service: PhraseSearchService, mocker) -> None:
     point = _make_scored_point(1, "original_1", "behavior")
-    mocker.patch.object(
-        test_service,
-        "_t1_get_phrases",
-        new=AsyncMock(return_value=("male", {"behavior": "typing fast"})),
-    )
+
+    async def _fake_vision(_):
+        return _fake_vision_response(phrases={"behavior": "typing fast"})
+
+    test_service._vision_llm = RunnableLambda(_fake_vision)
     mocker.patch.object(
         test_service,
         "_t1_embed_phrases",
-        new=AsyncMock(return_value={"behavior": [0.1, 0.2]}),
+        new=AsyncMock(
+            return_value={
+                "gender": "male",
+                "tag_vectors": {"behavior": [0.1, 0.2]},
+                "lang": "ru",
+                "mood_key": "A",
+            }
+        ),
     )
     test_service.vector_repository.search_batch = AsyncMock(return_value=[[point]])
+
     result = await test_service.t1_search(
         image_raw=b"img",
         filters=TagExclusionFilters(),

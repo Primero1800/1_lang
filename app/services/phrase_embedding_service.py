@@ -22,6 +22,7 @@ class PhraseEmbeddingService(BaseService):
     """W4 worker service: fetches translated phrases, embeds them via Mistral, saves vectors"""
 
     _embeddings = _w4_embeddings
+    _OPERATION = "w4_embed"
 
     @log_decorator(level=logging.INFO)
     async def _fetch_batch(self, batch_size: int) -> list[Phrase]:
@@ -70,7 +71,7 @@ class PhraseEmbeddingService(BaseService):
             )
         self._queue_token_usage(
             model=_W4_MODEL,
-            operation="w4_embed",
+            operation=self._OPERATION,
             input_tokens=input_tokens,
         )
         return {batch[i].id: vectors[i] for i in range(len(batch))}
@@ -138,7 +139,9 @@ class PhraseEmbeddingService(BaseService):
             return await self._save_vectors(matched, sent_ids)
 
         # 2. Assemble the embedding chain
-        chain = RunnableLambda(self._embed) | RunnableLambda(_save_for_batch)
+        chain = (
+            RunnableLambda(self._embed) | RunnableLambda(_save_for_batch)
+        ).with_config(run_name=self._OPERATION)
 
         # 3. Invoke the chain; mark all phrases as failed on any error
         try:

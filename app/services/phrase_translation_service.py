@@ -28,6 +28,7 @@ class PhraseTranslationService(BaseService):
     """W3 worker service: fetches generated phrases, translates them via Mistral, saves results"""
 
     _llm = _w3_llm
+    _OPERATION = "w3_translate"
 
     @log_decorator(level=logging.INFO)
     async def _fetch_batch(self, batch_size: int) -> list[Phrase]:
@@ -132,7 +133,7 @@ class PhraseTranslationService(BaseService):
         usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
         self._queue_token_usage(
             model=_W3_MODEL,
-            operation="w3_translate",
+            operation=self._OPERATION,
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
         )
@@ -273,7 +274,7 @@ class PhraseTranslationService(BaseService):
             | RunnableLambda(self._fire_token_task)
             | RunnableLambda(self._parse_translations)
             | RunnableLambda(_save_for_batch)
-        )
+        ).with_config(run_name=self._OPERATION)
 
         # 4. Invoke the chain; mark all phrases as failed on any error
         try:

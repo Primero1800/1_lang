@@ -2,12 +2,9 @@ from typing import Annotated, Callable, Type, TypeVar
 
 from fastapi import Depends
 
-from app.adapters.ai_client import AIClientAbstract
 from app.adapters.queue_client import MessageQueueClientAbstract
 from app.adapters.vector_client import VectorClientAbstract
 from app.dependencies.infrastructure import (
-    get_ai_client,
-    get_groq_client,
     get_phrase_vector_repository,
     get_queue_client,
     get_vector_client,
@@ -27,8 +24,6 @@ from app.uow import UnitOfWork, get_uow_factory, get_uow
 
 async def get_base_deps(
     uow_factory: Annotated[UnitOfWork, Depends(get_uow_factory)],
-    ai_client: Annotated[AIClientAbstract, Depends(get_ai_client)],
-    ai_client2: Annotated[AIClientAbstract, Depends(get_groq_client)],
     vector_client: Annotated[VectorClientAbstract, Depends(get_vector_client)],
     vector_client_main: Annotated[
         VectorClientAbstract, Depends(get_vector_client_main)
@@ -39,8 +34,6 @@ async def get_base_deps(
 
     :param:
         uow_factory: unit-of-work factory (not context-managed)
-        ai_client: primary AI client (Mistral)
-        ai_client2: secondary AI client (Groq)
         vector_client: local Qdrant client (bcp)
         vector_client_main: remote Qdrant client (main)
         queue_client: async Redis client
@@ -50,8 +43,6 @@ async def get_base_deps(
     """
     return BaseDeps(
         uow_factory=uow_factory,
-        ai_client=ai_client,
-        ai_client2=ai_client2,
         vector_client=vector_client,
         vector_client_main=vector_client_main,
         queue_client=queue_client,

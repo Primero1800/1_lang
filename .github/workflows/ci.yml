@@ -21,13 +21,12 @@ jobs:
       POOL_TIMEOUT: 30
       POOL_RECYCLE: 1800
       LOG_LEVEL: DEBUG
-      AIOHTTP_TIMEOUT_SECONDS: 60
-      AIOHTTP_KEEPALIVE_TIMEOUT: 30
       HEALTH_CHECK_TIMEOUT_SEC: 5
       # [AI]
       MISTRAL_API_KEY: ""
       MISTRAL_MODEL: mistral-small-latest
       MISTRAL_EMBED_MODEL: mistral-embed
+      MISTRAL_VISION_MODEL: pixtral-12b-2409
       MISTRAL_TIMEOUT_SEC: 60
       MISTRAL_VISION_TIMEOUT_SEC: 120
       GROQ_API_KEY: ""
@@ -54,6 +53,10 @@ jobs:
       REDIS_TOKENS_WORKER: main
       REDIS_TOKENS_BATCH_SIZE: 100
       REDIS_TOKENS_POLL_INTERVAL: 60
+      LANGCHAIN_TRACING_V2: false
+      LANGCHAIN_API_KEY: ""
+      LANGCHAIN_PROJECT: 1_Lang
+
 
     steps:
       - uses: actions/checkout@v4
