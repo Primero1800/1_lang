@@ -12,7 +12,7 @@ from app.common.enums import PhraseStatusEnum
 from app.common.exceptions import VisionPipelineException
 from app.common.logging import log_decorator, logger
 from app.core.config import settings
-from app.pyd.ai_schemas import VisionOutput
+from app.pyd.ai_schemas import VisionBatchOutput, VisionOutput
 from app.services.base import BaseService
 from app.services.prompt_service import PromptService
 
@@ -71,11 +71,12 @@ class PhraseService(BaseService):
         :returns:
             parsed: the structured VisionOutput from the LLM
         """
-        parsed: VisionOutput | None = data.get("parsed")
+        parsed: VisionBatchOutput | None = data.get("parsed")
         if parsed is None:
             raise VisionPipelineException(
                 detail="LLM returned invalid structured output"
             )
+        all_phrases = [phrase for photo in parsed.photos for phrase in photo.phrases]
         usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
         self._queue_token_usage(
             model=_VISION_MODEL,
@@ -83,7 +84,7 @@ class PhraseService(BaseService):
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
         )
-        return parsed
+        return VisionOutput(phrases=all_phrases)
 
     @log_decorator(level=logging.INFO)
     async def _build_rows(
@@ -140,7 +141,7 @@ class PhraseService(BaseService):
 
     @log_decorator(level=logging.INFO)
     async def upload_images(self, images_raw: list[bytes], lang: str) -> dict[str, int]:
-        """Run the full W1 vision chain: prepare → build message → LLM → track tokens → build rows → save
+        """Run the W1 vision chain once per image, merge rows, then save
 
         :param:
             images_raw: list of raw image bytes from the upload
@@ -149,14 +150,11 @@ class PhraseService(BaseService):
         :returns:
             result: dict with 'phrases_found', 'inserted', and 'skipped' counts
         """
-        # 1. Attach structured output schema to the LLM
-        llm = self._llm.with_structured_output(VisionOutput, include_raw=True)
+        llm = self._llm.with_structured_output(VisionBatchOutput, include_raw=True)
 
-        # 2. Bind the target language into the _build_rows step
         async def _build_rows_for_lang(vo: VisionOutput) -> list:
             return await self._build_rows(vo, lang)
 
-        # 3. Assemble the full LangChain processing pipeline
         chain = (
             RunnableLambda(self._encode_images)
             | RunnableLambda(self._build_vision_message)
@@ -166,7 +164,6 @@ class PhraseService(BaseService):
             | RunnableLambda(self._save_phrases)
         ).with_config(run_name=self._OPERATION)
 
-        # 4. Invoke the chain; map unexpected errors to VisionPipelineException
         try:
             return await chain.ainvoke({"images_raw": images_raw, "lang": lang})
         except VisionPipelineException:

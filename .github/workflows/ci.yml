@@ -11,6 +11,7 @@ jobs:
     env:
       APP_NAME: my_service
       APP_VERSION: "0.1.0"
+      DEFAULT_TIMEZONE: UTC
       POSTGRES_HOST: localhost
       POSTGRES_USER: test
       POSTGRES_PASSWORD: test
@@ -52,6 +53,7 @@ jobs:
       REDIS_TOKENS_GROUP: token_workers
       REDIS_TOKENS_BATCH_SIZE: 100
       REDIS_TOKENS_POLL_INTERVAL: 60
+      REDIS_PIPELINE_CHANNEL: pipeline:status
       LANGCHAIN_TRACING_V2: false
       LANGCHAIN_API_KEY: ""
       LANGCHAIN_PROJECT: 1_Lang

@@ -95,6 +95,18 @@ class MessageQueueClientAbstract(abc.ABC):
             None
         """
 
+    @abc.abstractmethod
+    async def publish(self, channel: str, message: str) -> None:
+        """Publish a message to a Pub/Sub channel
+
+        :param:
+            channel: channel name
+            message: message payload as string
+
+        :returns:
+            None
+        """
+
 
 class RedisClient(MessageQueueClientAbstract):
     """Async Redis client wrapper"""
@@ -203,6 +215,18 @@ class RedisClient(MessageQueueClientAbstract):
             None
         """
         await self.client.xack(stream, group, *message_ids)
+
+    async def publish(self, channel: str, message: str) -> None:
+        """Publish a message to a Redis Pub/Sub channel
+
+        :param:
+            channel: channel name
+            message: message payload as string
+
+        :returns:
+            None
+        """
+        await self.client.publish(channel, message)
 
     @property
     def client(self) -> aioredis.Redis:

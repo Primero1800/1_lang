@@ -1,5 +1,5 @@
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
-from apscheduler.triggers.interval import IntervalTrigger
+from apscheduler.triggers.cron import CronTrigger
 from fastapi import FastAPI
 
 from app.adapters.queue_client import MessageQueueClientAbstract
@@ -57,16 +57,19 @@ class AppLifecycle:
         # 6. Start token usage background worker
         self._token_worker = TokenWorkerService(self.queue_client)
         await self._token_worker.start()
-        # 7. Start pipeline dispatch scheduler (APScheduler, 1-minute interval)
+        # 7. Start pipeline dispatch scheduler
         self._scheduler = AsyncIOScheduler()
         self._scheduler.add_job(
             func=run_pipeline_scheduler,
-            trigger=IntervalTrigger(minutes=1),
+            trigger=CronTrigger(minute=f"*/{settings.pipeline_cron_minutes}"),
             id="pipeline_scheduler",
             replace_existing=True,
         )
         self._scheduler.start()
-        logger.info("[pipeline_scheduler] APScheduler started")
+        logger.info(
+            "[pipeline_scheduler] APScheduler started, interval=%d min",
+            settings.pipeline_cron_minutes,
+        )
 
     async def on_shutdown(self) -> None:
         """Gracefully stop all services and close connections

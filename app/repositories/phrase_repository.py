@@ -1,5 +1,5 @@
 import logging
-from datetime import timedelta
+from datetime import datetime, timedelta
 
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -179,3 +179,48 @@ class PhraseRepository(BaseRepository):
             .values(status=status, updated_at=func.now())
         )
         await self._session.execute(stmt)
+
+    @log_decorator(level=logging.DEBUG)
+    async def get_pipeline_status_counts(
+        self, stuck_threshold_sec: int
+    ) -> dict[str, int]:
+        """Return ready phrase counts per status for the pipeline scheduler
+
+        For IN_PROGRESS statuses: counts only phrases stuck longer than threshold.
+        For all other statuses: counts all phrases.
+        Excludes LOADING_DONE. Single query, one round-trip.
+
+        :param:
+            stuck_threshold_sec: seconds after which an IN_PROGRESS phrase is considered stuck
+
+        :returns:
+            counts: {status_value: ready_count}
+        """
+        threshold_dt = datetime.now(settings.default_timezone) - timedelta(
+            seconds=stuck_threshold_sec
+        )
+
+        _in_progress = [
+            PhraseStatusEnum.GENERATING_IN_PROGRESS,
+            PhraseStatusEnum.TRANSLATING_IN_PROGRESS,
+            PhraseStatusEnum.EMBEDDING_IN_PROGRESS,
+            PhraseStatusEnum.LOADING_IN_PROGRESS,
+        ]
+
+        stmt = (
+            select(
+                Phrase.status,
+                case(
+                    (
+                        Phrase.status.in_(_in_progress),
+                        func.count().filter(Phrase.updated_at < threshold_dt),
+                    ),
+                    else_=func.count(),
+                ).label("ready"),
+            )
+            .where(Phrase.status != PhraseStatusEnum.LOADING_DONE)
+            .group_by(Phrase.status)
+        )
+
+        result = await self._session.execute(stmt)
+        return {row.status.value: row.ready for row in result}

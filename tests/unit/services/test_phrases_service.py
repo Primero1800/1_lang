@@ -8,18 +8,13 @@ from langchain_core.runnables import RunnableLambda
 
 from app.common.enums import PhraseStatusEnum
 from app.common.exceptions import VisionPipelineException
-from app.pyd.ai_schemas import PhraseItem, VisionOutput
+from app.pyd.ai_schemas import PhraseItem, VisionBatchOutput, VisionOutput
 from app.services.base import BaseDeps
 from app.services.phrase_service import PhraseService
 
 
 @pytest.fixture
 def phrase_service() -> PhraseService:
-    """
-    :returns:
-        service: PhraseService with mocked infrastructure; queue_client is AsyncMock
-        so asyncio.create_task(queue_client.xadd(...)) works in _fire_token_task
-    """
     base_deps = MagicMock(spec=BaseDeps)
     base_deps.uow_factory = MagicMock()
     base_deps.ai_client = MagicMock()
@@ -51,13 +46,6 @@ def _vo(*phrase_tag_pairs: tuple[str, str]) -> VisionOutput:
 async def test_encode_images_converts_bytes_to_base64(
     phrase_service: PhraseService,
 ) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     raw = b"test image bytes"
     result = await phrase_service._encode_images({"images_raw": [raw], "lang": "ru"})
     assert result["images_b64"] == [base64.b64encode(raw).decode()]
@@ -66,13 +54,6 @@ async def test_encode_images_converts_bytes_to_base64(
 
 @pytest.mark.asyncio
 async def test_encode_images_passes_lang_through(phrase_service: PhraseService) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_service._encode_images({"images_raw": [b"x"], "lang": "en"})
     assert result["lang"] == "en"
 
@@ -84,13 +65,6 @@ async def test_encode_images_passes_lang_through(phrase_service: PhraseService) 
 async def test_build_vision_message_returns_single_human_message(
     phrase_service: PhraseService,
 ) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_service._build_vision_message(
         {"images_b64": ["abc123"], "lang": "ru"}
     )
@@ -102,13 +76,6 @@ async def test_build_vision_message_returns_single_human_message(
 async def test_build_vision_message_embeds_image_url(
     phrase_service: PhraseService,
 ) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_service._build_vision_message(
         {"images_b64": ["abc123"], "lang": "ru"}
     )
@@ -127,13 +94,6 @@ async def test_build_vision_message_embeds_image_url(
 async def test_fire_token_task_raises_when_parsed_is_none(
     phrase_service: PhraseService,
 ) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     with pytest.raises(VisionPipelineException):
         await phrase_service._fire_token_task({"raw": None, "parsed": None})
 
@@ -142,38 +102,26 @@ async def test_fire_token_task_raises_when_parsed_is_none(
 async def test_fire_token_task_returns_vision_output(
     phrase_service: PhraseService,
 ) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     vo = _vo(("typing fast", "behavior"))
+    batch = VisionBatchOutput(photos=[vo])
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
 
-    result = await phrase_service._fire_token_task({"raw": raw_mock, "parsed": vo})
+    result = await phrase_service._fire_token_task({"raw": raw_mock, "parsed": batch})
     await asyncio.sleep(0)
 
-    assert result is vo
+    assert isinstance(result, VisionOutput)
+    assert result.phrases[0].phrase == "typing fast"
 
 
 @pytest.mark.asyncio
 async def test_fire_token_task_schedules_xadd(phrase_service: PhraseService) -> None:
-    """queue_client.xadd must be called once with the token usage payload
-
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     vo = _vo(("typing fast", "behavior"))
+    batch = VisionBatchOutput(photos=[vo])
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
 
-    await phrase_service._fire_token_task({"raw": raw_mock, "parsed": vo})
+    await phrase_service._fire_token_task({"raw": raw_mock, "parsed": batch})
     await asyncio.sleep(0)
 
     phrase_service.queue_client.xadd.assert_called_once()
@@ -186,13 +134,6 @@ async def test_fire_token_task_schedules_xadd(phrase_service: PhraseService) -> 
 async def test_build_rows_normalises_and_lowercases(
     phrase_service: PhraseService,
 ) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_service._build_rows(_vo(("Hello World", "behavior")), "ru")
     assert len(result) == 1
     assert result[0]["original"] == "hello world"
@@ -203,26 +144,12 @@ async def test_build_rows_normalises_and_lowercases(
 
 @pytest.mark.asyncio
 async def test_build_rows_strips_special_chars(phrase_service: PhraseService) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_service._build_rows(_vo(("hello, world!", "mood")), "en")
     assert result[0]["original"] == "hello world"
 
 
 @pytest.mark.asyncio
 async def test_build_rows_skips_empty_phrase(phrase_service: PhraseService) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     result = await phrase_service._build_rows(_vo(("!!!???", "behavior")), "ru")
     assert result == []
 
@@ -231,14 +158,6 @@ async def test_build_rows_skips_empty_phrase(phrase_service: PhraseService) -> N
 async def test_build_rows_deduplicates_by_original(
     phrase_service: PhraseService,
 ) -> None:
-    """Second occurrence of the same cleaned text must be dropped
-
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     vo = VisionOutput(
         phrases=[
             PhraseItem(phrase="same phrase", tag="behavior"),
@@ -255,26 +174,12 @@ async def test_build_rows_deduplicates_by_original(
 
 @pytest.mark.asyncio
 async def test_save_phrases_raises_on_empty_rows(phrase_service: PhraseService) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     with pytest.raises(VisionPipelineException):
         await phrase_service._save_phrases([])
 
 
 @pytest.mark.asyncio
 async def test_save_phrases_returns_counts(phrase_service: PhraseService) -> None:
-    """
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     rows = [
         {
             "original": "a",
@@ -307,15 +212,6 @@ async def test_save_phrases_returns_counts(phrase_service: PhraseService) -> Non
 async def test_upload_images_wraps_unexpected_error(
     phrase_service: PhraseService,
 ) -> None:
-    """Any unhandled exception from the chain must surface as VisionPipelineException
-
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
-
     async def _raise(_):
         raise RuntimeError("model unavailable")
 
@@ -328,18 +224,11 @@ async def test_upload_images_wraps_unexpected_error(
 
 @pytest.mark.asyncio
 async def test_upload_images_success(phrase_service: PhraseService) -> None:
-    """Full chain: fake LLM returns structured output; end-to-end result is correct
-
-    :param:
-        phrase_service: service fixture
-
-    :returns:
-        None
-    """
     vo = _vo(("typing fast", "behavior"), ("looks neat", "appearance"))
+    batch = VisionBatchOutput(photos=[vo])
 
     async def _fake_llm(_):
-        return {"raw": MagicMock(usage_metadata=None), "parsed": vo}
+        return {"raw": MagicMock(usage_metadata=None), "parsed": batch}
 
     phrase_service._llm = MagicMock()
     phrase_service._llm.with_structured_output.return_value = RunnableLambda(_fake_llm)

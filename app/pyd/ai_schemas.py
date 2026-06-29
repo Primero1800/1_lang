@@ -13,13 +13,23 @@ class PhraseItem(BaseModel):
 
 
 class VisionOutput(BaseModel):
-    """Structured output from the W1 vision chain — flat list of all phrases across all photos"""
+    """Phrases extracted from a single photo"""
 
     phrases: list[PhraseItem] = Field(
         description=(
-            "All extracted phrases across all photos. "
-            "For each photo provide exactly 5 unique variants per tag (6 tags × 5 variants = 30 items per photo). "
+            "Exactly 30 phrases for one photo: 5 unique variants per tag × 6 tags. "
             "Variants for the same tag must be unique across all photos in the batch."
+        )
+    )
+
+
+class VisionBatchOutput(BaseModel):
+    """Structured output from the W1 vision chain — one VisionOutput per photo"""
+
+    photos: list[VisionOutput] = Field(
+        description=(
+            "One entry per photo in the batch, each containing exactly 30 phrases. "
+            "The list length must equal the number of photos provided."
         )
     )
 
