@@ -49,6 +49,20 @@ async def get_base_deps(
     )
 
 
+async def get_base_deps_standalone() -> BaseDeps:
+    """Assemble BaseDeps outside of FastAPI request context (scheduler, background tasks)
+
+    :returns:
+        base_deps: populated BaseDeps dataclass instance
+    """
+    return BaseDeps(
+        uow_factory=await get_uow_factory(),
+        vector_client=await get_vector_client(),
+        vector_client_main=await get_vector_client_main(),
+        queue_client=await get_queue_client(),
+    )
+
+
 T = TypeVar("T", bound=BaseService)
 
 
