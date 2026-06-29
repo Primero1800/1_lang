@@ -1,4 +1,4 @@
-from sqlalchemy import Enum as SqlEnum, String, UniqueConstraint, text
+from sqlalchemy import Enum as SqlEnum, Index, String, UniqueConstraint, text
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.common.enums import LangEnum, PhraseStatusEnum, TagEnum
@@ -11,6 +11,7 @@ class Phrase(Base):
     __tablename__ = "phrases"
     __table_args__ = (
         UniqueConstraint("original", "lang", name="uq_phrases_original_lang"),
+        Index("ix_phrases_status_updated", "status", "updated_at"),
         {"comment": "Оригинальные фразы-наблюдения, полученные от vision-модели"},
     )
 

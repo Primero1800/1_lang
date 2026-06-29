@@ -65,7 +65,7 @@ class Settings(BaseSettings):
     REDIS_DB: int = 0
     REDIS_TOKENS_STREAM: str = "stream:tokens"
     REDIS_TOKENS_GROUP: str = "token_workers"
-    REDIS_TOKENS_WORKER: str = "main"
+    REDIS_TOKENS_WORKER: str = "redis_token_worker"
     REDIS_TOKENS_BATCH_SIZE: int = 100
     REDIS_TOKENS_POLL_INTERVAL: int = 60
 

@@ -1,3 +1,5 @@
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
 from fastapi import FastAPI
 
 from app.adapters.queue_client import MessageQueueClientAbstract
@@ -11,6 +13,7 @@ from app.dependencies.infrastructure import (
     get_vector_client_main,
 )
 from app.services.token_worker_service import TokenWorkerService
+from app.utils.pipeline_scheduler_func import run_pipeline_scheduler
 
 
 class AppLifecycle:
@@ -30,6 +33,7 @@ class AppLifecycle:
         self.vector_client_main: VectorClientAbstract | None = None
         self.queue_client: MessageQueueClientAbstract | None = None
         self._token_worker: TokenWorkerService | None = None
+        self._scheduler: AsyncIOScheduler | None = None
 
     async def on_startup(self) -> None:
         """Run all startup procedures
@@ -53,6 +57,16 @@ class AppLifecycle:
         # 6. Start token usage background worker
         self._token_worker = TokenWorkerService(self.queue_client)
         await self._token_worker.start()
+        # 7. Start pipeline dispatch scheduler (APScheduler, 1-minute interval)
+        self._scheduler = AsyncIOScheduler()
+        self._scheduler.add_job(
+            func=run_pipeline_scheduler,
+            trigger=IntervalTrigger(minutes=1),
+            id="pipeline_scheduler",
+            replace_existing=True,
+        )
+        self._scheduler.start()
+        logger.info("[pipeline_scheduler] APScheduler started")
 
     async def on_shutdown(self) -> None:
         """Gracefully stop all services and close connections
@@ -60,6 +74,8 @@ class AppLifecycle:
         :returns:
             None
         """
+        if self._scheduler:
+            self._scheduler.shutdown(wait=False)
         if self._token_worker:
             await self._token_worker.stop()
         if self.vector_client:
