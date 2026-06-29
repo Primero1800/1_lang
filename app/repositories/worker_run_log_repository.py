@@ -1,7 +1,9 @@
 import logging
-from datetime import datetime, timezone
+from datetime import datetime
 
-from sqlalchemy import update
+from sqlalchemy import select, update
+
+from app.core.config import settings
 
 from app.common.enums import WorkerStatusEnum
 from app.common.logging import log_decorator
@@ -52,7 +54,7 @@ class WorkerRunLogRepository(BaseRepository):
             .where(WorkerRunLog.id == log_id)
             .values(
                 status=status,
-                finished_at=datetime.now(tz=timezone.utc),
+                finished_at=datetime.now(tz=settings.default_timezone),
                 result=result,
             )
         )
@@ -76,9 +78,32 @@ class WorkerRunLogRepository(BaseRepository):
             )
             .values(
                 status=WorkerStatusEnum.FAILED,
-                finished_at=datetime.now(tz=timezone.utc),
+                finished_at=datetime.now(tz=settings.default_timezone),
                 result={"error": "abandoned on worker restart"},
             )
         )
         result = await self._session.execute(stmt)
         return result.rowcount  # type: ignore[attr-defined]
+
+    @log_decorator(level=logging.DEBUG)
+    async def get_last_runs(self, workers: list[str]) -> dict[str, datetime | None]:
+        """Return the last successful finished_at timestamp per worker
+
+        :param:
+            workers: list of worker name strings to query
+
+        :returns:
+            last_runs: {worker_name: last finished_at datetime or None if never run}
+        """
+        stmt = (
+            select(WorkerRunLog.worker, WorkerRunLog.finished_at)
+            .where(
+                WorkerRunLog.worker.in_(workers),
+                WorkerRunLog.status == WorkerStatusEnum.DONE,
+            )
+            .order_by(WorkerRunLog.worker, WorkerRunLog.finished_at.desc())
+            .distinct(WorkerRunLog.worker)
+        )
+        result = await self._session.execute(stmt)
+        found = {row.worker: row.finished_at for row in result}
+        return {w: found.get(w) for w in workers}

@@ -1,7 +1,9 @@
 import logging
+import math
 from typing import Annotated
-from pydantic import Field
+from zoneinfo import ZoneInfo
 
+from pydantic import Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -10,6 +12,7 @@ class Settings(BaseSettings):
 
     APP_NAME: str
     APP_VERSION: str
+    DEFAULT_TIMEZONE: str = "UTC"
 
     POSTGRES_HOST: str
     POSTGRES_USER: str
@@ -59,6 +62,16 @@ class Settings(BaseSettings):
 
     STUCK_THRESHOLD: int = 10
 
+    # [Pipeline dispatcher] worker configs — have defaults, override via env if needed
+    PIPELINE_W2_TIMEOUT_SEC: int = 60
+    PIPELINE_W2_BATCH_SIZE: int = 5
+    PIPELINE_W3_TIMEOUT_SEC: int = 60
+    PIPELINE_W3_BATCH_SIZE: int = 5
+    PIPELINE_W4_TIMEOUT_SEC: int = 3600
+    PIPELINE_W4_BATCH_SIZE: int = 200
+    PIPELINE_W5_TIMEOUT_SEC: int = 3600
+    PIPELINE_W5_BATCH_SIZE: int = 400
+
     # [Redis]
     REDIS_HOST: str = "localhost"
     REDIS_PORT: int = 6379
@@ -68,6 +81,7 @@ class Settings(BaseSettings):
     REDIS_TOKENS_WORKER: str = "redis_token_worker"
     REDIS_TOKENS_BATCH_SIZE: int = 100
     REDIS_TOKENS_POLL_INTERVAL: int = 60
+    REDIS_PIPELINE_CHANNEL: str = "pipeline:status"
 
     model_config = SettingsConfigDict(
         env_file=".env", env_file_encoding="utf-8", extra="ignore"
@@ -106,6 +120,30 @@ class Settings(BaseSettings):
         if level not in levels:
             raise ValueError(f"Invalid log level: {level}")
         return levels[level]
+
+    @property
+    def pipeline_cron_minutes(self) -> int:
+        """Return the scheduler interval in minutes: ceil(min worker timeout / 60)
+
+        :returns:
+            minutes: interval to pass to CronTrigger(minute='*/N')
+        """
+        min_timeout = min(
+            self.PIPELINE_W2_TIMEOUT_SEC,
+            self.PIPELINE_W3_TIMEOUT_SEC,
+            self.PIPELINE_W4_TIMEOUT_SEC,
+            self.PIPELINE_W5_TIMEOUT_SEC,
+        )
+        return max(1, math.ceil(min_timeout / 60))
+
+    @property
+    def default_timezone(self) -> ZoneInfo:
+        """Return the configured timezone as a ZoneInfo object
+
+        :returns:
+            tz: ZoneInfo instance (e.g. ZoneInfo('UTC'))
+        """
+        return ZoneInfo(self.DEFAULT_TIMEZONE)
 
 
 settings = Settings()  # type: ignore[call-arg]

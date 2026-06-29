@@ -3,6 +3,8 @@ from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile, status
 
+from app.core.config import settings
+
 from app.common.exceptions import (
     EmbeddingPipelineException,
     GenerationPipelineException,
@@ -106,7 +108,7 @@ async def w2_generate(
     phrase_data_service: Annotated[
         PhraseDataService, Depends(get_phrase_data_service_without_session)
     ],
-    batch_size: Annotated[int, Query(ge=1, le=50)] = 5,
+    batch_size: Annotated[int, Query(ge=1, le=50)] = settings.PIPELINE_W2_BATCH_SIZE,
 ) -> Any:
     """Trigger W2: pick a batch of draft phrases and generate tone variants via Mistral
 
@@ -137,7 +139,7 @@ async def w3_translate(
         PhraseTranslationService,
         Depends(get_phrase_translation_service_without_session),
     ],
-    batch_size: Annotated[int, Query(ge=1, le=50)] = 5,
+    batch_size: Annotated[int, Query(ge=1, le=50)] = settings.PIPELINE_W3_BATCH_SIZE,
 ) -> Any:
     """Trigger W3: translate a batch of generated phrases and their variants via Mistral
 
@@ -168,7 +170,7 @@ async def w4_embed(
         PhraseEmbeddingService,
         Depends(get_phrase_embedding_service_without_session),
     ],
-    batch_size: Annotated[int, Query(ge=1, le=500)] = 200,
+    batch_size: Annotated[int, Query(ge=1, le=500)] = settings.PIPELINE_W4_BATCH_SIZE,
 ) -> Any:
     """Trigger W4: embed a batch of translated phrases via Mistral and store vectors
 
@@ -199,7 +201,7 @@ async def w5_load(
         PhraseLoadingService,
         Depends(get_phrase_loading_service_without_session),
     ],
-    batch_size: Annotated[int, Query(ge=1, le=2000)] = 400,
+    batch_size: Annotated[int, Query(ge=1, le=2000)] = settings.PIPELINE_W5_BATCH_SIZE,
 ) -> Any:
     """Trigger W5: load a batch of embedded phrases into Qdrant
 
