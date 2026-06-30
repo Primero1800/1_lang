@@ -3,7 +3,7 @@ import json
 import logging
 import random
 import time
-from typing import TypedDict
+from typing import Any, TypedDict
 
 from app.adapters.queue_client import MessageQueueClientAbstract
 from app.commands.base import BaseCommand
@@ -130,7 +130,7 @@ class PipelineWorkersService:
             await pubsub.unsubscribe()
             await pubsub.aclose()
 
-    def _should_run(self, role: WorkerRoleEnum, snapshot: dict) -> bool:
+    def _should_run(self, role: WorkerRoleEnum, snapshot: dict[str, Any]) -> bool:
         """Check ready count and cooldown against worker config
 
         :param:

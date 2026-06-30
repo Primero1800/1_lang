@@ -31,7 +31,7 @@ class PhraseService(BaseService):
     _OPERATION = "w1_vision"
 
     @log_decorator(level=logging.INFO)
-    async def _encode_images(self, data: dict) -> dict:
+    async def _encode_images(self, data: dict[str, Any]) -> dict[str, Any]:
         """Encode raw image bytes to base64
 
         :param:
@@ -44,7 +44,7 @@ class PhraseService(BaseService):
         return {"images_b64": images_b64, "lang": data["lang"]}
 
     @log_decorator(level=logging.INFO)
-    async def _build_vision_message(self, data: dict) -> list[HumanMessage]:
+    async def _build_vision_message(self, data: dict[str, Any]) -> list[HumanMessage]:
         """Resolve the vision prompt and build a multimodal HumanMessage
 
         :param:
@@ -62,7 +62,7 @@ class PhraseService(BaseService):
         return [HumanMessage(content=content)]
 
     @log_decorator(level=logging.INFO)
-    async def _fire_token_task(self, data: dict) -> VisionOutput:
+    async def _fire_token_task(self, data: dict[str, Any]) -> VisionOutput:
         """Publish token usage to Redis Streams and return the parsed VisionOutput
 
         :param:
@@ -152,7 +152,7 @@ class PhraseService(BaseService):
         """
         llm = self._llm.with_structured_output(VisionBatchOutput, include_raw=True)
 
-        async def _build_rows_for_lang(vo: VisionOutput) -> list:
+        async def _build_rows_for_lang(vo: VisionOutput) -> list[dict[str, Any]]:
             return await self._build_rows(vo, lang)
 
         chain = (

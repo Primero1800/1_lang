@@ -74,7 +74,7 @@ class PhraseDataService(BaseService):
         return batch
 
     @log_decorator(level=logging.INFO)
-    async def _build_w2_message(self, data: dict) -> list[BaseMessage]:
+    async def _build_w2_message(self, data: dict[str, Any]) -> list[BaseMessage]:
         """Build system + user messages for the W2 variant generation call
 
         :param:
@@ -93,7 +93,7 @@ class PhraseDataService(BaseService):
         return [SystemMessage(content=system), HumanMessage(content=payload)]
 
     @log_decorator(level=logging.INFO)
-    async def _fire_token_task(self, data: dict) -> VariantsResponse:
+    async def _fire_token_task(self, data: dict[str, Any]) -> VariantsResponse:
         """Publish token usage to Redis Streams and return the parsed response
 
         :param:

@@ -88,7 +88,7 @@ class PhraseTranslationService(BaseService):
         return {r.phrase_id: r.variants for r in records}
 
     @log_decorator(level=logging.INFO)
-    async def _build_w3_message(self, data: dict) -> list[BaseMessage]:
+    async def _build_w3_message(self, data: dict[str, Any]) -> list[BaseMessage]:
         """Build system + user messages for the W3 translation call
 
         :param:
@@ -116,7 +116,7 @@ class PhraseTranslationService(BaseService):
         return [SystemMessage(content=system), HumanMessage(content=payload)]
 
     @log_decorator(level=logging.INFO)
-    async def _fire_token_task(self, data: dict) -> TranslationResponse:
+    async def _fire_token_task(self, data: dict[str, Any]) -> TranslationResponse:
         """Publish token usage to Redis Streams and return the parsed response
 
         :param:

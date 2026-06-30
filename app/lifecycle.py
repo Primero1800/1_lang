@@ -63,10 +63,13 @@ class AppLifecycle:
         self._pipeline_workers = PipelineWorkersService(self.queue_client)
         await self._pipeline_workers.start()
         # 8. Start pipeline dispatch scheduler
-        self._scheduler = AsyncIOScheduler(timezone=settings.default_timezone)
+        self._scheduler = AsyncIOScheduler(timezone=settings.DEFAULT_TIMEZONE)
         self._scheduler.add_job(
             func=run_pipeline_scheduler,
-            trigger=CronTrigger(minute=f"*/{settings.pipeline_cron_minutes}", timezone=settings.default_timezone),
+            trigger=CronTrigger(
+                minute=f"*/{settings.pipeline_cron_minutes}",
+                timezone=settings.DEFAULT_TIMEZONE,
+            ),
             id="pipeline_scheduler",
             replace_existing=True,
         )
