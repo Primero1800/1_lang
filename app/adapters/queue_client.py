@@ -2,6 +2,7 @@ import abc
 from typing import Any
 
 import redis.asyncio as aioredis
+from redis.asyncio.client import PubSub
 
 from app.core.config import settings
 
@@ -105,6 +106,17 @@ class MessageQueueClientAbstract(abc.ABC):
 
         :returns:
             None
+        """
+
+    @abc.abstractmethod
+    async def subscribe(self, channel: str) -> PubSub:
+        """Subscribe to a Pub/Sub channel and return the subscription object
+
+        :param:
+            channel: channel name to subscribe to
+
+        :returns:
+            pubsub: active PubSub subscription object
         """
 
 
@@ -227,6 +239,19 @@ class RedisClient(MessageQueueClientAbstract):
             None
         """
         await self.client.publish(channel, message)
+
+    async def subscribe(self, channel: str) -> PubSub:
+        """Create a new PubSub object and subscribe to the given channel
+
+        :param:
+            channel: channel name to subscribe to
+
+        :returns:
+            pubsub: active PubSub subscription object
+        """
+        pubsub = self.client.pubsub()
+        await pubsub.subscribe(channel)
+        return pubsub
 
     @property
     def client(self) -> aioredis.Redis:
