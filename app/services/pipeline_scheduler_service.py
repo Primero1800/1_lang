@@ -86,7 +86,7 @@ class PipelineSchedulerService(BaseService):
             last_run = last_runs.get(worker)
             snapshot[worker] = {
                 "ready": ready,
-                "last_run": last_run.timestamp() if last_run else None,
+                "last_run": int(last_run.timestamp()) if last_run else None,
                 "ts": ts,
             }
         return snapshot

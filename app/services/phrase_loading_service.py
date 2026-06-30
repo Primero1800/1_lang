@@ -63,7 +63,7 @@ class PhraseLoadingService(BaseService):
             # 2. Log each chosen phrase
             for i, member in enumerate(batch, start=1):
                 logger.info(
-                    f"[W5, loading] {i} chosen: id={member.id}, lang={member.lang.value}, status={member.status.value}"
+                    f"[W5, loading] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
             ids = [p.id for p in batch]
             # 3. Fetch embeddings and variants for the batch

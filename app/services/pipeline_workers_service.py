@@ -6,6 +6,11 @@ import time
 from typing import Any
 
 from app.adapters.queue_client import MessageQueueClientAbstract
+from app.commands.base import BaseCommand
+from app.commands.w2_command import CommandW2
+from app.commands.w3_command import CommandW3
+from app.commands.w4_command import CommandW4
+from app.commands.w5_command import CommandW5
 from app.common.enums import WorkerRoleEnum
 from app.common.logging import logger, log_decorator
 from app.core.config import settings
@@ -13,22 +18,26 @@ from app.dependencies.services import get_base_deps_standalone
 from app.services.base import BaseDeps
 
 
-_WORKER_CONFIGS: dict[str, dict[str, Any]] = {
+_WORKER_CONFIGS: dict[WorkerRoleEnum, dict[str, Any]] = {
     WorkerRoleEnum.W2: {
         "batch_size": settings.PIPELINE_W2_BATCH_SIZE,
         "timeout_sec": settings.PIPELINE_W2_TIMEOUT_SEC,
+        "command_class": CommandW2,
     },
     WorkerRoleEnum.W3: {
         "batch_size": settings.PIPELINE_W3_BATCH_SIZE,
         "timeout_sec": settings.PIPELINE_W3_TIMEOUT_SEC,
+        "command_class": CommandW3,
     },
     WorkerRoleEnum.W4: {
         "batch_size": settings.PIPELINE_W4_BATCH_SIZE,
         "timeout_sec": settings.PIPELINE_W4_TIMEOUT_SEC,
+        "command_class": CommandW4,
     },
     WorkerRoleEnum.W5: {
         "batch_size": settings.PIPELINE_W5_BATCH_SIZE,
         "timeout_sec": settings.PIPELINE_W5_TIMEOUT_SEC,
+        "command_class": CommandW5,
     },
 }
 
@@ -60,7 +69,7 @@ class PipelineWorkersService:
         """
         self._is_running = True
         self._tasks = [
-            asyncio.create_task(self._run_worker(role), name=f"pipeline_{role.value}")  # type: ignore
+            asyncio.create_task(self._run_worker(role), name=f"pipeline_{role.value}")
             for role in WorkerRoleEnum
         ]
         logger.info("[pipeline_workers] started %d workers", len(self._tasks))
@@ -130,7 +139,7 @@ class PipelineWorkersService:
         return ready >= cfg["batch_size"] and (time.time() - last_run) >= cfg["timeout_sec"]
 
     async def _execute(self, role: WorkerRoleEnum, base_deps: BaseDeps) -> None:
-        """Execute the pipeline step for the given role
+        """Instantiate the role command and execute it
 
         :param:
             role: worker role
@@ -139,5 +148,6 @@ class PipelineWorkersService:
         :returns:
             None
         """
-        # TODO: implement per-role dispatch (service call or Command pattern)
-        logger.info("[%s] execute triggered", role.value)
+        cfg = _WORKER_CONFIGS[role]
+        command: BaseCommand = cfg["command_class"](base_deps, cfg["batch_size"])
+        await command.execute()
