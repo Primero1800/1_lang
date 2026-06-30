@@ -88,7 +88,7 @@ class PhraseTranslationService(BaseService):
         return {r.phrase_id: r.variants for r in records}
 
     @log_decorator(level=logging.INFO)
-    async def _build_w3_message(self, data: dict) -> list[BaseMessage]:
+    async def _build_w3_message(self, data: dict[str, Any]) -> list[BaseMessage]:
         """Build system + user messages for the W3 translation call
 
         :param:
@@ -116,7 +116,7 @@ class PhraseTranslationService(BaseService):
         return [SystemMessage(content=system), HumanMessage(content=payload)]
 
     @log_decorator(level=logging.INFO)
-    async def _fire_token_task(self, data: dict) -> TranslationResponse:
+    async def _fire_token_task(self, data: dict[str, Any]) -> TranslationResponse:
         """Publish token usage to Redis Streams and return the parsed response
 
         :param:
@@ -249,7 +249,7 @@ class PhraseTranslationService(BaseService):
         """
         batch = await self._fetch_batch(batch_size)
         if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
+            return {"processed": 0, "failed": 0, "skipped": 0}
 
         lang_raw = batch[0].lang
         lang = lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)

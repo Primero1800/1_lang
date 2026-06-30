@@ -74,7 +74,7 @@ class PhraseDataService(BaseService):
         return batch
 
     @log_decorator(level=logging.INFO)
-    async def _build_w2_message(self, data: dict) -> list[BaseMessage]:
+    async def _build_w2_message(self, data: dict[str, Any]) -> list[BaseMessage]:
         """Build system + user messages for the W2 variant generation call
 
         :param:
@@ -93,7 +93,7 @@ class PhraseDataService(BaseService):
         return [SystemMessage(content=system), HumanMessage(content=payload)]
 
     @log_decorator(level=logging.INFO)
-    async def _fire_token_task(self, data: dict) -> VariantsResponse:
+    async def _fire_token_task(self, data: dict[str, Any]) -> VariantsResponse:
         """Publish token usage to Redis Streams and return the parsed response
 
         :param:
@@ -191,7 +191,7 @@ class PhraseDataService(BaseService):
         """
         batch = await self._fetch_batch(batch_size)
         if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
+            return {"processed": 0, "failed": 0, "skipped": 0}
 
         lang_raw = batch[0].lang
         lang = lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)

@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from app.common.enums import WorkerStatusEnum
 from app.common.logging import log_decorator
@@ -40,7 +41,7 @@ class WorkerRunLogService:
         self,
         log_id: int,
         status: WorkerStatusEnum,
-        result: dict | None = None,
+        result: dict[str, Any] | None = None,
     ) -> None:
         """Mark a log entry as finished with terminal status and optional result
 

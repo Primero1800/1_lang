@@ -12,6 +12,7 @@ from app.dependencies.infrastructure import (
     get_vector_client,
     get_vector_client_main,
 )
+from app.services.pipeline_workers_service import PipelineWorkersService
 from app.services.token_worker_service import TokenWorkerService
 from app.utils.pipeline_scheduler_func import run_pipeline_scheduler
 
@@ -33,6 +34,7 @@ class AppLifecycle:
         self.vector_client_main: VectorClientAbstract | None = None
         self.queue_client: MessageQueueClientAbstract | None = None
         self._token_worker: TokenWorkerService | None = None
+        self._pipeline_workers: PipelineWorkersService | None = None
         self._scheduler: AsyncIOScheduler | None = None
 
     async def on_startup(self) -> None:
@@ -57,11 +59,17 @@ class AppLifecycle:
         # 6. Start token usage background worker
         self._token_worker = TokenWorkerService(self.queue_client)
         await self._token_worker.start()
-        # 7. Start pipeline dispatch scheduler
-        self._scheduler = AsyncIOScheduler()
+        # 7. Start pipeline worker tasks (W2-W5)
+        self._pipeline_workers = PipelineWorkersService(self.queue_client)
+        await self._pipeline_workers.start()
+        # 8. Start pipeline dispatch scheduler
+        self._scheduler = AsyncIOScheduler(timezone=settings.DEFAULT_TIMEZONE)
         self._scheduler.add_job(
             func=run_pipeline_scheduler,
-            trigger=CronTrigger(minute=f"*/{settings.pipeline_cron_minutes}"),
+            trigger=CronTrigger(
+                minute=f"*/{settings.pipeline_cron_minutes}",
+                timezone=settings.DEFAULT_TIMEZONE,
+            ),
             id="pipeline_scheduler",
             replace_existing=True,
         )
@@ -79,6 +87,8 @@ class AppLifecycle:
         """
         if self._scheduler:
             self._scheduler.shutdown(wait=False)
+        if self._pipeline_workers:
+            await self._pipeline_workers.stop()
         if self._token_worker:
             await self._token_worker.stop()
         if self.vector_client:

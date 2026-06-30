@@ -130,7 +130,7 @@ class PhraseEmbeddingService(BaseService):
         """
         batch = await self._fetch_batch(batch_size)
         if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
+            return {"processed": 0, "failed": 0, "skipped": 0}
 
         sent_ids = {p.id for p in batch}
 

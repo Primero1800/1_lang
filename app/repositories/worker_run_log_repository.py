@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime
+from typing import Any
 
 from sqlalchemy import select, update
 
@@ -37,7 +38,7 @@ class WorkerRunLogRepository(BaseRepository):
         self,
         log_id: int,
         status: WorkerStatusEnum,
-        result: dict | None = None,
+        result: dict[str, Any] | None = None,
     ) -> None:
         """Mark a log entry as finished with final status and optional result payload
 

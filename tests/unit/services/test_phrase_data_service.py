@@ -227,7 +227,7 @@ async def test_w2_generate_empty_batch_returns_skipped(
         phrase_data_service, "_fetch_batch", new=AsyncMock(return_value=[])
     )
     result = await phrase_data_service.w2_generate(batch_size=7)
-    assert result == {"processed": 0, "failed": 0, "skipped": 1}
+    assert result == {"processed": 0, "failed": 0, "skipped": 0}
 
 
 @pytest.mark.asyncio

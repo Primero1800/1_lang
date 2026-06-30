@@ -114,7 +114,7 @@ class PhraseSearchService(BaseService):
             ]
 
         # 2. Closure: parse vision response, queue tokens, pass context forward
-        async def _process_vision(response: Any) -> dict:
+        async def _process_vision(response: Any) -> dict[str, Any]:
             usage = response.usage_metadata or {}
             self._queue_token_usage(
                 model=_T1_VISION_MODEL,
@@ -234,7 +234,7 @@ class PhraseSearchService(BaseService):
         results: list[list[ScoredPoint]],
         mood_key: str,
         gender: str,
-    ) -> dict[str, dict]:
+    ) -> dict[str, dict[str, Any]]:
         """Extract mood+gender variants from Qdrant search results, grouped by original phrase
 
         :param:

@@ -53,3 +53,12 @@ class PhraseStatusEnum(str, Enum):
     LOADING_IN_PROGRESS = "loading_in_progress"
     LOADING_DONE = "loading_done"
     LOADING_FAILED = "loading_failed"
+
+
+class WorkerRoleEnum(str, Enum):
+    """Pipeline worker roles for W2-W5 dispatch tasks"""
+
+    W2 = "w2"
+    W3 = "w3"
+    W4 = "w4"
+    W5 = "w5"
