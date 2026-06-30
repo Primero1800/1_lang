@@ -9,4 +9,6 @@ class CommandW3(BaseCommand):
     _ROLE = WorkerRoleEnum.W3
 
     async def _do_execute(self) -> dict:
-        return await PhraseTranslationService(self._base_deps).w3_translate(batch_size=self._batch_size)
+        return await PhraseTranslationService(self._base_deps).w3_translate(
+            batch_size=self._batch_size
+        )

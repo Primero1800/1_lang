@@ -249,7 +249,7 @@ class PhraseTranslationService(BaseService):
         """
         batch = await self._fetch_batch(batch_size)
         if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
+            return {"processed": 0, "failed": 0, "skipped": 0}
 
         lang_raw = batch[0].lang
         lang = lang_raw.value if isinstance(lang_raw, LangEnum) else str(lang_raw)

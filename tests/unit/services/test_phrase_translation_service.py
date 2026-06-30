@@ -282,7 +282,7 @@ async def test_w3_translate_empty_batch_returns_skipped(
         phrase_translation_service, "_fetch_batch", new=AsyncMock(return_value=[])
     )
     result = await phrase_translation_service.w3_translate(batch_size=5)
-    assert result == {"processed": 0, "failed": 0, "skipped": 1}
+    assert result == {"processed": 0, "failed": 0, "skipped": 0}
 
 
 @pytest.mark.asyncio

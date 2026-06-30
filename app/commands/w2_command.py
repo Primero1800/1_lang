@@ -9,4 +9,6 @@ class CommandW2(BaseCommand):
     _ROLE = WorkerRoleEnum.W2
 
     async def _do_execute(self) -> dict:
-        return await PhraseDataService(self._base_deps).w2_generate(batch_size=self._batch_size)
+        return await PhraseDataService(self._base_deps).w2_generate(
+            batch_size=self._batch_size
+        )

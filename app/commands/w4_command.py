@@ -9,4 +9,6 @@ class CommandW4(BaseCommand):
     _ROLE = WorkerRoleEnum.W4
 
     async def _do_execute(self) -> dict:
-        return await PhraseEmbeddingService(self._base_deps).w4_embed(batch_size=self._batch_size)
+        return await PhraseEmbeddingService(self._base_deps).w4_embed(
+            batch_size=self._batch_size
+        )

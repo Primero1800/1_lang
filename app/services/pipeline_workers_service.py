@@ -3,7 +3,7 @@ import json
 import logging
 import random
 import time
-from typing import Any
+from typing import TypedDict
 
 from app.adapters.queue_client import MessageQueueClientAbstract
 from app.commands.base import BaseCommand
@@ -18,7 +18,13 @@ from app.dependencies.services import get_base_deps_standalone
 from app.services.base import BaseDeps
 
 
-_WORKER_CONFIGS: dict[WorkerRoleEnum, dict[str, Any]] = {
+class _WorkerConfig(TypedDict):
+    batch_size: int
+    timeout_sec: int
+    command_class: type[BaseCommand]
+
+
+_WORKER_CONFIGS: dict[WorkerRoleEnum, _WorkerConfig] = {
     WorkerRoleEnum.W2: {
         "batch_size": settings.PIPELINE_W2_BATCH_SIZE,
         "timeout_sec": settings.PIPELINE_W2_TIMEOUT_SEC,
@@ -102,14 +108,20 @@ class PipelineWorkersService:
         await asyncio.sleep(jitter)
         base_deps = await get_base_deps_standalone()
         pubsub = await self._queue_client.subscribe(settings.REDIS_PIPELINE_CHANNEL)
-        logger.info("[%s] subscribed to %s", role.value, settings.REDIS_PIPELINE_CHANNEL)
+        logger.info(
+            "[%s] subscribed to %s", role.value, settings.REDIS_PIPELINE_CHANNEL
+        )
         try:
             async for message in pubsub.listen():
                 if not self._is_running:
                     break
                 if message["type"] != "message":
                     continue
-                snapshot = json.loads(message["data"])
+                try:
+                    snapshot = json.loads(message["data"])
+                except json.JSONDecodeError:
+                    logger.warning("[%s] malformed message, skipping", role.value)
+                    continue
                 if self._should_run(role, snapshot):
                     await self._execute(role, base_deps)
         except asyncio.CancelledError:
@@ -136,7 +148,8 @@ class PipelineWorkersService:
             return False
         if last_run is None:
             return True
-        return ready >= cfg["batch_size"] and (time.time() - last_run) >= cfg["timeout_sec"]
+        elapsed = time.time() - last_run
+        return ready >= cfg["batch_size"] or elapsed >= cfg["timeout_sec"]
 
     async def _execute(self, role: WorkerRoleEnum, base_deps: BaseDeps) -> None:
         """Instantiate the role command and execute it

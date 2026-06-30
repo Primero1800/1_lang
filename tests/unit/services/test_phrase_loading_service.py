@@ -164,7 +164,7 @@ async def test_w5_load_empty_batch_returns_skipped(
         new=AsyncMock(return_value=([], {}, {})),
     )
     result = await phrase_loading_service.w5_load(batch_size=10)
-    assert result == {"processed": 0, "failed": 0, "skipped": 1}
+    assert result == {"processed": 0, "failed": 0, "skipped": 0}
 
 
 @pytest.mark.asyncio

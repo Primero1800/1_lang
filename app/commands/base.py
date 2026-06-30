@@ -1,5 +1,6 @@
 import abc
 import logging
+from typing import Any
 
 from app.common.enums import WorkerRoleEnum, WorkerStatusEnum
 from app.common.logging import log_decorator, logger
@@ -25,7 +26,7 @@ class BaseCommand(abc.ABC):
         self._batch_size = batch_size
 
     @abc.abstractmethod
-    async def _do_execute(self) -> dict:
+    async def _do_execute(self) -> dict[str, Any]:
         """Run the pipeline step and return the result
 
         :returns:
@@ -33,7 +34,7 @@ class BaseCommand(abc.ABC):
         """
 
     @log_decorator(level=logging.INFO)
-    async def execute(self) -> dict:
+    async def execute(self) -> dict[str, Any]:
         """Orchestrate: abandon stuck runs → open log → execute → close log
 
         :returns:

@@ -140,7 +140,7 @@ class PhraseLoadingService(BaseService):
         # 1. Fetch batch with embeddings and variants
         batch, embeddings_map, variants_map = await self._fetch_batch(batch_size)
         if not batch:
-            return {"processed": 0, "failed": 0, "skipped": 1}
+            return {"processed": 0, "failed": 0, "skipped": 0}
 
         sent_ids = {p.id for p in batch}
 
