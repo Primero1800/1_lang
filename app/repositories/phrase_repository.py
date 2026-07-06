@@ -3,6 +3,7 @@ from datetime import datetime, timedelta
 
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
+from sqlalchemy.orm import joinedload
 
 from app.common.enums import PhraseStatusEnum
 from app.common.logging import log_decorator
@@ -226,16 +227,19 @@ class PhraseRepository(BaseRepository):
         return {row.status.value: row.ready for row in result}
 
     @log_decorator(level=logging.DEBUG)
-    async def get_sample_per_tag(self, sample_size: int) -> list[Phrase]:
+    async def get_sample_per_tag(
+        self, sample_size: int, load_data: bool = False
+    ) -> list[Phrase]:
         """Return a representative sample of LOADING_DONE phrases.
 
-        Designed for evaluation dataset assembly (e.g. W1 LLM-as-judge pipeline).
+        Designed for evaluation dataset assembly (W1/W2 LLM-as-judge pipeline).
 
         :param:
             sample_size: total number of phrases to sample
+            load_data: if True, eagerly loads phrase_data via JOIN
 
         :returns:
-            phrases: list of Phrase objects ordered by tag, id
+            phrases: list of Phrase objects ordered by id
         """
         condition = Phrase.status == PhraseStatusEnum.LOADING_DONE
         total: int = (
@@ -245,10 +249,14 @@ class PhraseRepository(BaseRepository):
         step = max(total // sample_size, 1)
         target_ids = [i * step + 1 for i in range(sample_size + 1)]
 
-        result = await self._session.execute(
+        stmt = (
             select(Phrase)
             .where(condition, Phrase.id.in_(target_ids))
-            .order_by(Phrase.tag, Phrase.id)
+            .order_by(Phrase.id)
             .limit(sample_size)
         )
+        if load_data:
+            stmt = stmt.options(joinedload(Phrase.phrase_data))
+
+        result = await self._session.execute(stmt)
         return list(result.scalars().all())
