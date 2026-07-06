@@ -193,3 +193,73 @@ async def test_abandon_running_returns_zero_when_nothing_running(
         await session.commit()
 
     assert count == 0
+
+
+# --- get_last_runs ---
+
+
+@pytest.mark.asyncio
+async def test_get_last_runs_returns_none_for_worker_with_no_logs(
+    test_session_maker, empty_db
+) -> None:
+    """
+    :param:
+        test_session_maker: async session factory
+        empty_db: fresh schema
+
+    :returns:
+        None
+    """
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        result = await repo.get_last_runs(["w2_generate"])
+
+    assert result == {"w2_generate": None}
+
+
+@pytest.mark.asyncio
+async def test_get_last_runs_returns_finished_at_for_done_log(
+    test_session_maker, empty_db
+) -> None:
+    """
+    :param:
+        test_session_maker: async session factory
+        empty_db: fresh schema
+
+    :returns:
+        None
+    """
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        log_id = await repo.create("w2_generate")
+        await repo.finish(log_id, WorkerStatusEnum.DONE, result={})
+        await session.commit()
+
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        result = await repo.get_last_runs(["w2_generate"])
+
+    assert result["w2_generate"] is not None
+
+
+@pytest.mark.asyncio
+async def test_get_last_runs_ignores_running_logs(test_session_maker, empty_db) -> None:
+    """Only DONE logs should contribute to last_run — RUNNING logs are skipped.
+
+    :param:
+        test_session_maker: async session factory
+        empty_db: fresh schema
+
+    :returns:
+        None
+    """
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        await repo.create("w3_translate")
+        await session.commit()
+
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        result = await repo.get_last_runs(["w3_translate"])
+
+    assert result["w3_translate"] is None
