@@ -228,22 +228,25 @@ class PhraseRepository(BaseRepository):
 
     @log_decorator(level=logging.DEBUG)
     async def get_sample_per_tag(
-        self, sample_size: int, load_data: bool = False
+        self, sample_size: int, load_data: bool = False, lang: str | None = None
     ) -> list[Phrase]:
         """Return a representative sample of LOADING_DONE phrases.
 
-        Designed for evaluation dataset assembly (W1/W2 LLM-as-judge pipeline).
+        Designed for evaluation dataset assembly (W1/W2/W3 LLM-as-judge pipeline).
 
         :param:
             sample_size: total number of phrases to sample
             load_data: if True, eagerly loads phrase_data via JOIN
+            lang: if set, filters by language code
 
         :returns:
             phrases: list of Phrase objects ordered by id
         """
-        condition = Phrase.status == PhraseStatusEnum.LOADING_DONE
+        conditions = [Phrase.status == PhraseStatusEnum.LOADING_DONE]
+        if lang is not None:
+            conditions.append(Phrase.lang == lang)
         total: int = (
-            await self._session.execute(select(func.count(Phrase.id)).where(condition))
+            await self._session.execute(select(func.count(Phrase.id)).where(*conditions))
         ).scalar_one()
 
         step = max(total // sample_size, 1)
@@ -251,7 +254,7 @@ class PhraseRepository(BaseRepository):
 
         stmt = (
             select(Phrase)
-            .where(condition, Phrase.id.in_(target_ids))
+            .where(*conditions, Phrase.id.in_(target_ids))
             .order_by(Phrase.id)
             .limit(sample_size)
         )
