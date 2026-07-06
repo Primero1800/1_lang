@@ -484,3 +484,35 @@ async def test_get_sample_per_tag_with_load_data_returns_empty_when_no_loading_d
 
     result = await repo.get_sample_per_tag(sample_size=5, load_data=True)
     assert result == []
+
+
+@pytest.mark.asyncio
+async def test_get_sample_per_tag_filters_by_lang(
+    db_session: AsyncSession,
+) -> None:
+    repo = PhraseRepository(db_session)
+    await repo.bulk_create(
+        [
+            {
+                "original": f"ru phrase {i}",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.LOADING_DONE,
+            }
+            for i in range(3)
+        ]
+        + [
+            {
+                "original": f"en phrase {i}",
+                "tag": "behavior",
+                "lang": "en",
+                "status": PhraseStatusEnum.LOADING_DONE,
+            }
+            for i in range(3)
+        ]
+    )
+    await db_session.commit()
+
+    result = await repo.get_sample_per_tag(sample_size=10, lang="ru")
+    assert all(p.lang == "ru" for p in result)
+    assert all(p.status == PhraseStatusEnum.LOADING_DONE for p in result)

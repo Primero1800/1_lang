@@ -1,5 +1,6 @@
 import logging
 from datetime import datetime, timedelta
+from typing import Any
 
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -18,7 +19,7 @@ class PhraseRepository(BaseRepository):
     """Repository for creating and managing Phrase records in PostgreSQL"""
 
     @log_decorator(level=logging.DEBUG)
-    async def bulk_create(self, rows: list[dict]) -> list[int]:
+    async def bulk_create(self, rows: list[dict[str, Any]]) -> list[int]:
         """Insert multiple phrase rows, silently skipping duplicates
 
         :param:
@@ -246,7 +247,9 @@ class PhraseRepository(BaseRepository):
         if lang is not None:
             conditions.append(Phrase.lang == lang)
         total: int = (
-            await self._session.execute(select(func.count(Phrase.id)).where(*conditions))
+            await self._session.execute(
+                select(func.count(Phrase.id)).where(*conditions)
+            )
         ).scalar_one()
 
         step = max(total // sample_size, 1)

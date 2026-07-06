@@ -14,6 +14,7 @@ import os
 from langsmith import Client
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
+from app.models.phrases import Phrase
 from app.repositories.phrase_repository import PhraseRepository
 from evaluation.config import DATASET_NAME_W3, EVAL_SAMPLE_SIZE_W3
 
@@ -25,7 +26,7 @@ _DATABASE_URL = f"postgresql+asyncpg://{_user}:{_password}@localhost:5433/{_db}"
 _LANGS = ("ru", "en")
 
 
-async def _sample_phrases():
+async def _sample_phrases() -> list[Phrase]:
     engine = create_async_engine(_DATABASE_URL)
     session_factory = async_sessionmaker(engine, expire_on_commit=False)
     try:
@@ -42,7 +43,7 @@ async def _sample_phrases():
         await engine.dispose()
 
 
-def _upload_to_langsmith(phrases, dataset_name: str) -> None:
+def _upload_to_langsmith(phrases: list[Phrase], dataset_name: str) -> None:
     client = Client()
 
     try:
