@@ -2,21 +2,19 @@
 Build W1 evaluation dataset in LangSmith.
 Run: poetry run python -m evaluation.build_dataset_w1
 
-Samples LIMIT_PER_TAG phrases per tag from LOADING_DONE RU phrases,
-then creates (or reuses) a LangSmith dataset and uploads the examples.
+Samples EVAL_SAMPLE_SIZE phrases from LOADING_DONE, uploads to LangSmith dataset.
 Re-running appends; reset the dataset in LangSmith UI if you need a clean slate.
 
-EVAL_SAMPLE_SIZE env var controls total sample size (default 102 = 17 × 6 tags).
+EVAL_SAMPLE_SIZE env var controls total sample size (default 96).
 """
 
 import asyncio
 import os
 
-from evaluation.config import DATASET_NAME_W1, LIMIT_PER_TAG
+from evaluation.config import DATASET_NAME_W1, EVAL_SAMPLE_SIZE
 from langsmith import Client
 from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 
-from app.common.enums import LangEnum
 from app.repositories.phrase_repository import PhraseRepository
 
 _user = os.environ["POSTGRES_USER"]
@@ -31,10 +29,7 @@ async def _sample_phrases():
     try:
         async with session_factory() as session:
             repo = PhraseRepository(session)
-            return await repo.get_sample_per_tag(
-                limit_per_tag=LIMIT_PER_TAG,
-                lang=LangEnum.RU,
-            )
+            return await repo.get_sample_per_tag(sample_size=EVAL_SAMPLE_SIZE)
     finally:
         await engine.dispose()
 
@@ -56,7 +51,7 @@ def _upload_to_langsmith(phrases, dataset_name: str) -> None:
         {
             "phrase_id": p.id,
             "phrase": p.original,
-            "tag": p.tag.value,
+            "tag": p.tag,
             "lang": p.lang.value,
         }
         for p in phrases
@@ -68,7 +63,7 @@ def _upload_to_langsmith(phrases, dataset_name: str) -> None:
 async def main() -> None:
     phrases = await _sample_phrases()
     n_tags = len(set(p.tag for p in phrases))
-    print(f"Sampled {len(phrases)} phrases ({LIMIT_PER_TAG} per tag × {n_tags} tags, lang=ru)")
+    print(f"Sampled {len(phrases)} phrases ({n_tags} tags)")
     if not phrases:
         print("No LOADING_DONE RU phrases found — run the full pipeline first.")
         return
