@@ -2,10 +2,13 @@ from pydantic import BaseModel, Field
 
 
 class PhraseItem(BaseModel):
-    """Single phrase with its tag category, as extracted from a vision model response"""
+    """Single two-part observation with its tag category, as extracted from a vision model response"""
 
-    phrase: str = Field(
-        description="A 5-6 word lowercase phrase describing the person. Language must match the prompt language."
+    concrete: str = Field(
+        description="A concrete 5-6 word observation about the person. Lowercase, no punctuation."
+    )
+    abstract: str = Field(
+        description="A more abstract or figurative 5-6 word take on the same observation. Lowercase, no punctuation."
     )
     tag: str = Field(
         description="One of: behavior, appearance, age, mood, posture, hairstyle"

@@ -25,7 +25,7 @@ services:
     ports:
       - "5433:${POSTGRES_PORT}"
     volumes:
-      - postgres_data:/var/lib/postgresql
+      - postgres_data:/var/lib/postgresql/data
     command: -p ${POSTGRES_PORT}
     networks:
       - my_service_network
