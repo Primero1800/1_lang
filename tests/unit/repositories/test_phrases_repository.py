@@ -52,8 +52,18 @@ async def test_bulk_create_empty_list_returns_empty(db_session: AsyncSession) ->
 async def test_bulk_create_inserts_rows(db_session: AsyncSession) -> None:
     repo = PhraseRepository(db_session)
     rows = [
-        {"original": "test phrase one", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-        {"original": "test phrase two", "tag": "appearance", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
+        {
+            "original": "test phrase one",
+            "tag": "behavior",
+            "lang": "ru",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+        {
+            "original": "test phrase two",
+            "tag": "appearance",
+            "lang": "ru",
+            "status": PhraseStatusEnum.DRAFT,
+        },
     ]
     result = await repo.bulk_create(rows)
     assert len(result) == 2
@@ -64,7 +74,14 @@ async def test_bulk_create_inserts_rows(db_session: AsyncSession) -> None:
 async def test_bulk_create_on_conflict_skips_duplicate(
     test_session_maker, empty_db
 ) -> None:
-    rows = [{"original": "dup phrase", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT}]
+    rows = [
+        {
+            "original": "dup phrase",
+            "tag": "behavior",
+            "lang": "ru",
+            "status": PhraseStatusEnum.DRAFT,
+        }
+    ]
 
     async with test_session_maker() as session:
         repo = PhraseRepository(session)
@@ -201,8 +218,18 @@ async def test_get_batch_returns_empty_when_nothing_matches(
 async def test_get_ids_by_originals_returns_mapping(db_session: AsyncSession) -> None:
     repo = PhraseRepository(db_session)
     rows = [
-        {"original": "alpha phrase", "tag": "behavior", "lang": "en", "status": PhraseStatusEnum.DRAFT},
-        {"original": "beta phrase", "tag": "appearance", "lang": "en", "status": PhraseStatusEnum.DRAFT},
+        {
+            "original": "alpha phrase",
+            "tag": "behavior",
+            "lang": "en",
+            "status": PhraseStatusEnum.DRAFT,
+        },
+        {
+            "original": "beta phrase",
+            "tag": "appearance",
+            "lang": "en",
+            "status": PhraseStatusEnum.DRAFT,
+        },
     ]
     await repo.bulk_create(rows)
     await db_session.commit()
@@ -218,7 +245,14 @@ async def test_get_ids_by_originals_returns_mapping(db_session: AsyncSession) ->
 async def test_get_ids_by_originals_filters_by_lang(db_session: AsyncSession) -> None:
     repo = PhraseRepository(db_session)
     await repo.bulk_create(
-        [{"original": "gamma phrase", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT}]
+        [
+            {
+                "original": "gamma phrase",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.DRAFT,
+            }
+        ]
     )
     await db_session.commit()
 
@@ -232,17 +266,34 @@ async def test_get_ids_by_originals_filters_by_lang(db_session: AsyncSession) ->
 @pytest.mark.asyncio
 async def test_update_status_changes_targeted_ids(db_session: AsyncSession) -> None:
     repo = PhraseRepository(db_session)
-    ids = await repo.bulk_create([
-        {"original": "phrase a", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-        {"original": "phrase b", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-    ])
+    ids = await repo.bulk_create(
+        [
+            {
+                "original": "phrase a",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.DRAFT,
+            },
+            {
+                "original": "phrase b",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.DRAFT,
+            },
+        ]
+    )
     await db_session.commit()
 
     await repo.update_status([ids[0]], PhraseStatusEnum.GENERATING_IN_PROGRESS)
     await db_session.commit()
 
     from sqlalchemy import select
-    rows = (await db_session.execute(select(Phrase).where(Phrase.id.in_(ids)))).scalars().all()
+
+    rows = (
+        (await db_session.execute(select(Phrase).where(Phrase.id.in_(ids))))
+        .scalars()
+        .all()
+    )
     statuses = {p.id: p.status for p in rows}
     assert statuses[ids[0]] == PhraseStatusEnum.GENERATING_IN_PROGRESS
     assert statuses[ids[1]] == PhraseStatusEnum.DRAFT
@@ -253,16 +304,26 @@ async def test_update_status_does_not_affect_other_ids(
     db_session: AsyncSession,
 ) -> None:
     repo = PhraseRepository(db_session)
-    ids = await repo.bulk_create([
-        {"original": "keep draft", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-    ])
+    ids = await repo.bulk_create(
+        [
+            {
+                "original": "keep draft",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.DRAFT,
+            },
+        ]
+    )
     await db_session.commit()
 
     await repo.update_status([], PhraseStatusEnum.GENERATING_DONE)
     await db_session.commit()
 
     from sqlalchemy import select
-    phrase = (await db_session.execute(select(Phrase).where(Phrase.id == ids[0]))).scalar_one()
+
+    phrase = (
+        await db_session.execute(select(Phrase).where(Phrase.id == ids[0]))
+    ).scalar_one()
     assert phrase.status == PhraseStatusEnum.DRAFT
 
 
@@ -274,11 +335,28 @@ async def test_get_pipeline_status_counts_non_in_progress(
     db_session: AsyncSession,
 ) -> None:
     repo = PhraseRepository(db_session)
-    await repo.bulk_create([
-        {"original": "draft 1", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-        {"original": "draft 2", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.DRAFT},
-        {"original": "gen done", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.GENERATING_DONE},
-    ])
+    await repo.bulk_create(
+        [
+            {
+                "original": "draft 1",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.DRAFT,
+            },
+            {
+                "original": "draft 2",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.DRAFT,
+            },
+            {
+                "original": "gen done",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.GENERATING_DONE,
+            },
+        ]
+    )
     await db_session.commit()
 
     counts = await repo.get_pipeline_status_counts(stuck_threshold_sec=86400)
@@ -332,10 +410,17 @@ async def test_get_sample_per_tag_returns_loading_done_phrases(
     db_session: AsyncSession,
 ) -> None:
     repo = PhraseRepository(db_session)
-    await repo.bulk_create([
-        {"original": f"done phrase {i}", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.LOADING_DONE}
-        for i in range(5)
-    ])
+    await repo.bulk_create(
+        [
+            {
+                "original": f"done phrase {i}",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.LOADING_DONE,
+            }
+            for i in range(5)
+        ]
+    )
     await db_session.commit()
 
     result = await repo.get_sample_per_tag(sample_size=3)
@@ -347,10 +432,17 @@ async def test_get_sample_per_tag_respects_sample_size(
     db_session: AsyncSession,
 ) -> None:
     repo = PhraseRepository(db_session)
-    await repo.bulk_create([
-        {"original": f"done {i}", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.LOADING_DONE}
-        for i in range(6)
-    ])
+    await repo.bulk_create(
+        [
+            {
+                "original": f"done {i}",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.LOADING_DONE,
+            }
+            for i in range(6)
+        ]
+    )
     await db_session.commit()
 
     result = await repo.get_sample_per_tag(sample_size=3)
@@ -365,10 +457,17 @@ async def test_get_sample_per_tag_with_load_data_returns_phrases(
     db_session: AsyncSession,
 ) -> None:
     repo = PhraseRepository(db_session)
-    await repo.bulk_create([
-        {"original": f"loaded {i}", "tag": "behavior", "lang": "ru", "status": PhraseStatusEnum.LOADING_DONE}
-        for i in range(4)
-    ])
+    await repo.bulk_create(
+        [
+            {
+                "original": f"loaded {i}",
+                "tag": "behavior",
+                "lang": "ru",
+                "status": PhraseStatusEnum.LOADING_DONE,
+            }
+            for i in range(4)
+        ]
+    )
     await db_session.commit()
 
     result = await repo.get_sample_per_tag(sample_size=2, load_data=True)

@@ -29,7 +29,9 @@ async def _sample_phrases():
     try:
         async with session_factory() as session:
             repo = PhraseRepository(session)
-            return await repo.get_sample_per_tag(sample_size=EVAL_SAMPLE_SIZE_W2, load_data=True)
+            return await repo.get_sample_per_tag(
+                sample_size=EVAL_SAMPLE_SIZE_W2, load_data=True
+            )
     finally:
         await engine.dispose()
 
