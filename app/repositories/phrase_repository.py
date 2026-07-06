@@ -4,7 +4,7 @@ from datetime import datetime, timedelta
 from sqlalchemy import and_, case, func, or_, select, update
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
-from app.common.enums import PhraseStatusEnum
+from app.common.enums import LangEnum, PhraseStatusEnum
 from app.common.logging import log_decorator
 from app.core.config import settings
 from app.models.phrases import Phrase
@@ -224,3 +224,43 @@ class PhraseRepository(BaseRepository):
 
         result = await self._session.execute(stmt)
         return {row.status.value: row.ready for row in result}
+
+    @log_decorator(level=logging.DEBUG)
+    async def get_sample_per_tag(
+        self,
+        limit_per_tag: int,
+        lang: LangEnum | None = None,
+    ) -> list[Phrase]:
+        """Return a stratified sample of phrases, ``limit_per_tag`` rows per tag.
+
+        Designed for evaluation dataset assembly (e.g. W1 LLM-as-judge pipeline).
+
+        :param:
+            limit_per_tag: maximum phrases to return per tag value
+            lang: language filter; None returns all languages
+
+        :returns:
+            phrases: list of Phrase objects ordered by tag then id
+        """
+        conditions = [Phrase.status == PhraseStatusEnum.LOADING_DONE]
+        if lang is not None:
+            conditions.append(Phrase.lang == lang)
+
+        subq = (
+            select(
+                Phrase.id,
+                func.row_number()
+                .over(partition_by=Phrase.tag, order_by=Phrase.id)
+                .label("rn"),
+            )
+            .where(*conditions)
+            .subquery()
+        )
+        stmt = (
+            select(Phrase)
+            .join(subq, Phrase.id == subq.c.id)
+            .where(subq.c.rn <= limit_per_tag)
+            .order_by(Phrase.tag, Phrase.id)
+        )
+        result = await self._session.execute(stmt)
+        return list(result.scalars().all())
