@@ -33,9 +33,13 @@ def _make_mock_uow() -> AsyncMock:
     return mock_uow
 
 
-def _vo(*phrase_tag_pairs: tuple[str, str]) -> VisionOutput:
+def _item(concrete: str, abstract: str, tag: str) -> PhraseItem:
+    return PhraseItem(concrete=concrete, abstract=abstract, tag=tag)
+
+
+def _vo(*items: tuple[str, str, str]) -> VisionOutput:
     return VisionOutput(
-        phrases=[PhraseItem(phrase=p, tag=t) for p, t in phrase_tag_pairs]
+        phrases=[PhraseItem(concrete=c, abstract=a, tag=t) for c, a, t in items]
     )
 
 
@@ -102,7 +106,7 @@ async def test_fire_token_task_raises_when_parsed_is_none(
 async def test_fire_token_task_returns_vision_output(
     phrase_service: PhraseService,
 ) -> None:
-    vo = _vo(("typing fast", "behavior"))
+    vo = _vo(("typing fast", "lost in motion", "behavior"))
     batch = VisionBatchOutput(photos=[vo])
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
@@ -111,12 +115,12 @@ async def test_fire_token_task_returns_vision_output(
     await asyncio.sleep(0)
 
     assert isinstance(result, VisionOutput)
-    assert result.phrases[0].phrase == "typing fast"
+    assert result.phrases[0].concrete == "typing fast"
 
 
 @pytest.mark.asyncio
 async def test_fire_token_task_schedules_xadd(phrase_service: PhraseService) -> None:
-    vo = _vo(("typing fast", "behavior"))
+    vo = _vo(("typing fast", "lost in motion", "behavior"))
     batch = VisionBatchOutput(photos=[vo])
     raw_mock = MagicMock()
     raw_mock.usage_metadata = {"input_tokens": 10, "output_tokens": 5}
@@ -131,27 +135,16 @@ async def test_fire_token_task_schedules_xadd(phrase_service: PhraseService) -> 
 
 
 @pytest.mark.asyncio
-async def test_build_rows_normalises_and_lowercases(
+async def test_build_rows_concatenates_concrete_and_abstract(
     phrase_service: PhraseService,
 ) -> None:
-    result = await phrase_service._build_rows(_vo(("Hello World", "behavior")), "ru")
+    vo = _vo(("typing fast", "lost in motion", "behavior"))
+    result = await phrase_service._build_rows(vo, "ru")
     assert len(result) == 1
-    assert result[0]["original"] == "hello world"
+    assert result[0]["original"] == "typing fast. lost in motion"
     assert result[0]["tag"] == "behavior"
     assert result[0]["lang"] == "ru"
     assert result[0]["status"] == PhraseStatusEnum.DRAFT
-
-
-@pytest.mark.asyncio
-async def test_build_rows_strips_special_chars(phrase_service: PhraseService) -> None:
-    result = await phrase_service._build_rows(_vo(("hello, world!", "mood")), "en")
-    assert result[0]["original"] == "hello world"
-
-
-@pytest.mark.asyncio
-async def test_build_rows_skips_empty_phrase(phrase_service: PhraseService) -> None:
-    result = await phrase_service._build_rows(_vo(("!!!???", "behavior")), "ru")
-    assert result == []
 
 
 @pytest.mark.asyncio
@@ -160,13 +153,25 @@ async def test_build_rows_deduplicates_by_original(
 ) -> None:
     vo = VisionOutput(
         phrases=[
-            PhraseItem(phrase="same phrase", tag="behavior"),
-            PhraseItem(phrase="same phrase", tag="mood"),
+            _item("same phrase", "same abstract", "behavior"),
+            _item("same phrase", "same abstract", "mood"),
         ]
     )
     result = await phrase_service._build_rows(vo, "ru")
     assert len(result) == 1
     assert result[0]["tag"] == "behavior"
+
+
+@pytest.mark.asyncio
+async def test_build_rows_returns_multiple_distinct_items(
+    phrase_service: PhraseService,
+) -> None:
+    vo = _vo(
+        ("typing fast", "focused mind", "behavior"),
+        ("neat outfit", "clean appearance", "appearance"),
+    )
+    result = await phrase_service._build_rows(vo, "ru")
+    assert len(result) == 2
 
 
 # --- _save_phrases ---
@@ -224,7 +229,10 @@ async def test_upload_images_wraps_unexpected_error(
 
 @pytest.mark.asyncio
 async def test_upload_images_success(phrase_service: PhraseService) -> None:
-    vo = _vo(("typing fast", "behavior"), ("looks neat", "appearance"))
+    vo = _vo(
+        ("typing fast", "lost in motion", "behavior"),
+        ("neat outfit", "clean style", "appearance"),
+    )
     batch = VisionBatchOutput(photos=[vo])
 
     async def _fake_llm(_):
