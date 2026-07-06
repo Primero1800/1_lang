@@ -1,6 +1,5 @@
 import base64
 import logging
-import re
 from typing import Any
 
 from langchain_core.messages import HumanMessage
@@ -102,8 +101,7 @@ class PhraseService(BaseService):
         seen: set[str] = set()
         rows = []
         for item in vision_output.phrases:
-            cleaned = re.sub(r"[^\w\s\-]", "", item.phrase, flags=re.UNICODE)
-            original = " ".join(cleaned.split()).lower()
+            original = f"{item.concrete}. {item.abstract}".strip()
             if original and original not in seen:
                 seen.add(original)
                 rows.append(

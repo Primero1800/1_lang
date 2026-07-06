@@ -28,43 +28,45 @@ _RESTRICTED_MESSAGES: dict[str, str] = {
 
 PROMPT_PIXTRAL_RU = f"""Опиши подробно, ПОДРОБНО(!) что происходит на изображениях: \
 чем занимается человек, что открыто на экране, какое его поведение по плану:
-конкретно нужно четкое описание в одном расширенном предложении по тэгам:
-1. {TagEnum.BEHAVIOR.value} (как он себя ведет, что делает, может засыпает или наоборот слишком бодрый) - предложение из 5-6 слов,
-2. {TagEnum.APPEARANCE.value} (опрятный, причесанный, ухоженный, лысый, косой, хромой, больной) - предложение из 5-6 слов,
-3. {TagEnum.AGE.value} (старый, молодой, сопляк, скоро помрет (если очень старый), вчера родился (совсем юный)) - предложение из 5-6 слов,
-4. {TagEnum.MOOD.value} (приуныл, ржет, веселый, в петлю полезть готов) - предложение из 5-6 слов,
-5. {TagEnum.POSTURE.value} (сидит, раком, как царь, забитый) и тп. по такому принципу - предложение из 5-6 слов.
-6. {TagEnum.HAIRSTYLE.value} (сама прическа или головной убор по-простому, если прически не видно) - предложение из 5-6 слов
-Очень подробно надо, придирчиво. При этом вариант может быть в том числе вопросительным или восклицательным.
+конкретно нужно два наблюдения по каждому тэгу — одно конкретное, одно образное или абстрактное:
+1. {TagEnum.BEHAVIOR.value} (как он себя ведет, что делает, может засыпает или наоборот слишком бодрый)
+2. {TagEnum.APPEARANCE.value} (опрятный, причесанный, ухоженный, лысый, косой, хромой, больной)
+3. {TagEnum.AGE.value} (старый, молодой, сопляк, скоро помрет (если очень старый), вчера родился (совсем юный))
+4. {TagEnum.MOOD.value} (приуныл, ржет, веселый, в петлю полезть готов)
+5. {TagEnum.POSTURE.value} (сидит, раком, как царь, забитый) и тп. по такому принципу
+6. {TagEnum.HAIRSTYLE.value} (сама прическа или головной убор по-простому, если прически не видно)
+Очень подробно надо, придирчиво. Вариант может быть вопросительным или восклицательным.
 
 Для каждого фото выдай ровно по 5 оригинальных, отличных друг от друга вариантов по каждому из 6 тэгов.
-Каждый вариант — это целое предложение из 5-6 слов, не одно слово.
+Каждый вариант содержит два поля:
+- concrete: конкретное наблюдение из 5-6 слов
+- abstract: более образная или абстрактная мысль из 5-6 слов
 Итого на одно фото: 6 тэгов × 5 вариантов = 30 записей.
 
 Важно: варианты в рамках одного тега не должны повторяться даже между разными фото в батче.
 ВСЕ фразы должны быть ТОЛЬКО на русском языке.
-Все варианты возвращай в нижнем регистре.
 
 Тэги (значение поля tag): {", ".join(t.value for t in TagEnum)}"""
 
 PROMPT_PIXTRAL_EN = f"""Describe in thorough detail what is happening in the images: \
 what the person is doing, what is visible on screen, and their overall behavior.
-Provide one clear, specific sentence per tag:
-1. {TagEnum.BEHAVIOR.value} (what they are doing — are they falling asleep, overly energetic, distracted?) — 5-6 words
-2. {TagEnum.APPEARANCE.value} (neat, well-groomed, messy, bald, sloppy, sickly) — 5-6 words
-3. {TagEnum.AGE.value} (old, young, a kid, a teenager, middle-aged) — 5-6 words
-4. {TagEnum.MOOD.value} (gloomy, laughing, cheerful, stressed, checked out) — 5-6 words
-5. {TagEnum.POSTURE.value} (sitting upright, slouching, like royalty, hunched over) — 5-6 words
-6. {TagEnum.HAIRSTYLE.value} (describe the hair or headwear plainly; if not visible, note that) — 5-6 words
+For each tag provide two observations per variant — one concrete, one abstract or figurative:
+1. {TagEnum.BEHAVIOR.value} (what they are doing — falling asleep, overly energetic, distracted, glued to the screen)
+2. {TagEnum.APPEARANCE.value} (neat, well-groomed, messy, bald, sloppy, sickly)
+3. {TagEnum.AGE.value} (old, young, a kid, a teenager, middle-aged)
+4. {TagEnum.MOOD.value} (gloomy, laughing, cheerful, stressed, checked out)
+5. {TagEnum.POSTURE.value} (sitting upright, slouching, like royalty, hunched over)
+6. {TagEnum.HAIRSTYLE.value} (describe the hair or headwear plainly; if not visible, note that)
 Be very thorough and critical. Variants can be phrased as questions or exclamations.
 
 For each photo provide exactly 5 original, distinct variants for each of the 6 tags.
-Each variant must be a full sentence of 5-6 words, not a single word.
-Total per photo: 6 tags × 5 variants = 30 items.
+Each variant contains two fields:
+- concrete: a specific, literal 5-6 word observation about the person
+- abstract: a more figurative or metaphorical 5-6 word take on the same observation
+Total per photo: 6 tags × 5 variants = 30 entries.
 
 Important: variants within the same tag must remain unique across all photos in the batch.
 ALL phrases must be in English ONLY.
-Return all variants in lowercase.
 
 Tag values for the tag field: {", ".join(t.value for t in TagEnum)}"""
 
@@ -73,6 +75,8 @@ PROMPT_MISTRAL_VARIANTS_RU = (
     "Ты генерируешь короткие комментарии о поведении человека на русском языке. "
     "Всегда отвечай строго в формате JSON без дополнительных пояснений.\n\n"
     "Тебе дан список наблюдений за человеком. "
+    "Каждое наблюдение состоит из двух частей, соединённых через '. ': "
+    "конкретное описание и более образная мысль. Комментируй весь образ целиком.\n"
     "Для каждого наблюдения сгенерируй по 5 коротких комментариев (1 предложение) "
     'для каждого из 5 настроений × 2 пола. Обращение на "ты".\n\n'
     "Настроения:\n"
@@ -94,6 +98,8 @@ PROMPT_MISTRAL_VARIANTS_EN = (
     "You generate short comments about a person's behaviour in English. "
     "Always respond strictly in JSON format without any additional text.\n\n"
     "You are given a list of observations about a person. "
+    "Each observation consists of two parts joined by '. ': "
+    "a concrete description and a more figurative reflection. Comment on the overall impression as a whole.\n"
     "For each observation generate 5 short comments (1 sentence) "
     "for each of 5 tones × 2 genders. Address the person as 'you'.\n\n"
     "Tones:\n"
@@ -115,8 +121,9 @@ PROMPT_MISTRAL_TRANSLATE_RU = (
     "Ты переводчик. Переводишь короткие наблюдения о поведении человека с русского на английский язык. "
     "Всегда отвечай строго в формате JSON без дополнительных пояснений.\n\n"
     "Тебе дан список наблюдений на русском, каждое с вариантами комментариев по настроениям A-E. "
+    "Каждое наблюдение состоит из ДВУХ предложений, разделённых точкой: первое конкретное, второе образное.\n"
     "Для каждого наблюдения:\n"
-    '1. Переведи исходную фразу на английский (поле "translated")\n'
+    '1. Переведи исходную фразу на английский (поле "translated") — сохрани оба предложения, разделив точкой: "первое. второе"\n'
     "2. Переведи все варианты комментариев (A-E, male/female) на английский, сохраняя тон каждого настроения\n\n"
     "Настроения:\n"
     "A — cynically: very harsh and brutal, mockingly, can go over the top, but no slurs\n"
@@ -137,8 +144,9 @@ PROMPT_MISTRAL_TRANSLATE_EN = (
     "You are a translator. You translate short observations about a person's behaviour from English to Russian. "
     "Always respond strictly in JSON format without any additional text.\n\n"
     "You are given a list of observations in English, each with tone variants A-E. "
+    "Each observation consists of TWO sentences separated by a dot: the first is concrete, the second is figurative.\n"
     "For each observation:\n"
-    '1. Translate the original phrase to Russian (field "translated")\n'
+    '1. Translate the original phrase to Russian (field "translated") — preserve both sentences separated by a dot: "первое. второе"\n'
     "2. Translate all tone variants (A-E, male/female) to Russian, preserving the character of each tone\n\n"
     "Tones:\n"
     "A — цинично: очень грубо и жестоко оскорби, с насмешкой, можно за гранью, но без матов\n"
