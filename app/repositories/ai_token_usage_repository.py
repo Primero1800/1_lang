@@ -117,6 +117,24 @@ class AiTokenUsageRepository(BaseRepository):
         return list(rows), total_count
 
     @log_decorator(level=logging.DEBUG)
+    async def aggregate_usage(self, filters: AITokenFilter) -> dict:
+        """Return summed token usage across all rows matching filters
+
+        :param:
+            filters: filter conditions
+
+        :returns:
+            row: dict with input_tokens and output_tokens sums
+        """
+        conditions = self._build_conditions(filters)
+        stmt = select(
+            func.coalesce(func.sum(AiTokenUsage.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(AiTokenUsage.output_tokens), 0).label("output_tokens"),
+        ).where(*conditions)
+        result = await self._session.execute(stmt)
+        return result.one()._asdict()
+
+    @log_decorator(level=logging.DEBUG)
     async def bulk_accumulate(self, rows: list[dict]) -> None:
         """Upsert multiple pre-aggregated token usage rows in a single statement
 

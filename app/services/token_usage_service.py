@@ -47,3 +47,25 @@ class TokenUsageService(BaseService):
             "total_count": total_count,
             "items": items,
         }
+
+    @log_decorator(level=logging.INFO)
+    async def aggregate_usage(self, filters: AITokenFilter) -> dict:
+        """Return summed token usage for all rows matching filters
+
+        :param:
+            filters: query filters; model/name/operation reflect filter values in response
+
+        :returns:
+            result: flat dict with filter context fields and token sums
+        """
+        row = await self.uow.ai_token_usage_repository.aggregate_usage(filters=filters)
+        input_tokens = 0 if filters.exclude_input else row["input_tokens"]
+        output_tokens = 0 if filters.exclude_output else row["output_tokens"]
+        return {
+            "model": filters.model,
+            "name": filters.name,
+            "operation": filters.operation,
+            "input_tokens": input_tokens,
+            "output_tokens": output_tokens,
+            "total_tokens": input_tokens + output_tokens,
+        }
