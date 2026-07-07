@@ -42,6 +42,7 @@ PROMPT_PIXTRAL_RU = f"""Опиши подробно, ПОДРОБНО(!) что 
 - concrete: конкретное наблюдение из 5-6 слов
 - abstract: более образная или абстрактная мысль из 5-6 слов
 Итого на одно фото: 6 тэгов × 5 вариантов = 30 записей.
+Строго не меньше 5 вариантов на каждый тег — без исключений.
 
 Важно: варианты в рамках одного тега не должны повторяться даже между разными фото в батче.
 ВСЕ фразы должны быть ТОЛЬКО на русском языке.
@@ -64,6 +65,7 @@ Each variant contains two fields:
 - concrete: a specific, literal 5-6 word observation about the person
 - abstract: a more figurative or metaphorical 5-6 word take on the same observation
 Total per photo: 6 tags × 5 variants = 30 entries.
+Strictly no fewer than 5 variants per tag — without exception.
 
 Important: variants within the same tag must remain unique across all photos in the batch.
 ALL phrases must be in English ONLY.

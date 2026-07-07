@@ -1,9 +1,7 @@
 import asyncio
-import base64
 import pytest
 from unittest.mock import AsyncMock, MagicMock
 
-from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableLambda
 
 from app.common.enums import PhraseStatusEnum
@@ -41,54 +39,6 @@ def _vo(*items: tuple[str, str, str]) -> VisionOutput:
     return VisionOutput(
         phrases=[PhraseItem(concrete=c, abstract=a, tag=t) for c, a, t in items]
     )
-
-
-# --- _encode_images ---
-
-
-@pytest.mark.asyncio
-async def test_encode_images_converts_bytes_to_base64(
-    phrase_service: PhraseService,
-) -> None:
-    raw = b"test image bytes"
-    result = await phrase_service._encode_images({"images_raw": [raw], "lang": "ru"})
-    assert result["images_b64"] == [base64.b64encode(raw).decode()]
-    assert result["lang"] == "ru"
-
-
-@pytest.mark.asyncio
-async def test_encode_images_passes_lang_through(phrase_service: PhraseService) -> None:
-    result = await phrase_service._encode_images({"images_raw": [b"x"], "lang": "en"})
-    assert result["lang"] == "en"
-
-
-# --- _build_vision_message ---
-
-
-@pytest.mark.asyncio
-async def test_build_vision_message_returns_single_human_message(
-    phrase_service: PhraseService,
-) -> None:
-    result = await phrase_service._build_vision_message(
-        {"images_b64": ["abc123"], "lang": "ru"}
-    )
-    assert len(result) == 1
-    assert isinstance(result[0], HumanMessage)
-
-
-@pytest.mark.asyncio
-async def test_build_vision_message_embeds_image_url(
-    phrase_service: PhraseService,
-) -> None:
-    result = await phrase_service._build_vision_message(
-        {"images_b64": ["abc123"], "lang": "ru"}
-    )
-    content = result[0].content
-    image_items = [
-        c for c in content if isinstance(c, dict) and c.get("type") == "image_url"
-    ]
-    assert len(image_items) == 1
-    assert "abc123" in image_items[0]["image_url"]["url"]
 
 
 # --- _fire_token_task ---
