@@ -36,7 +36,9 @@ async def main() -> None:
             {"n": j + 1, "phrase": ex.inputs["phrase"], "tag": ex.inputs["tag"]}
             for j, ex in enumerate(batch)
         ]
-        print(f"  batch {batch_num}: scoring {len(items)} phrases...", end=" ", flush=True)
+        print(
+            f"  batch {batch_num}: scoring {len(items)} phrases...", end=" ", flush=True
+        )
         scores_by_n = {s.n: s for s in evaluate_batch(items)}
         for j, ex in enumerate(batch):
             score = scores_by_n.get(j + 1)

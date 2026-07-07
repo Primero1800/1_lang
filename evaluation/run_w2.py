@@ -11,7 +11,10 @@ import asyncio
 from langsmith import Client
 from langsmith.evaluation import aevaluate
 
-from evaluation.config import DATASET_NAME_W2, EVAL_BATCH_SIZE_W2  # triggers load_dotenv()
+from evaluation.config import (
+    DATASET_NAME_W2,
+    EVAL_BATCH_SIZE_W2,
+)  # triggers load_dotenv()
 from evaluation.evaluators.variants_quality_w2 import evaluate_batch
 
 
@@ -41,7 +44,9 @@ async def main() -> None:
             }
             for j, ex in enumerate(batch)
         ]
-        print(f"  batch {batch_num}: scoring {len(items)} phrases...", end=" ", flush=True)
+        print(
+            f"  batch {batch_num}: scoring {len(items)} phrases...", end=" ", flush=True
+        )
         scores_by_n = {s.n: s for s in evaluate_batch(items)}
         for j, ex in enumerate(batch):
             score = scores_by_n.get(j + 1)
