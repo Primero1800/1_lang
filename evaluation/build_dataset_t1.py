@@ -53,7 +53,7 @@ _PROMPT_TEMPLATES: dict[str, str] = {
 
 def _generate_observations(lang: str, per_tag: int) -> T1ObservationSet:
     llm = ChatMistralAI(
-        model_name=settings.MISTRAL_MODEL,
+        model_name=settings.MISTRAL_VISION_MODEL,
         api_key=SecretStr(settings.MISTRAL_API_KEY),
         temperature=0,
     ).with_structured_output(T1ObservationSet)

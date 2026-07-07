@@ -24,7 +24,7 @@ EVAL_BATCH_SIZE_W2 = int(os.getenv("EVAL_BATCH_SIZE_W2", "2"))
 EVAL_BATCH_SIZE_W3 = int(os.getenv("EVAL_BATCH_SIZE_W3", "4"))
 
 # T1 synthetic dataset params
-OBSERVATIONS_PER_TAG_T1 = int(os.getenv("OBSERVATIONS_PER_TAG_T1", "15"))
+OBSERVATIONS_PER_TAG_T1 = int(os.getenv("OBSERVATIONS_PER_TAG_T1", "10"))
 EVAL_LANG_T1 = os.getenv("EVAL_LANG_T1", "ru")
 
 # Judge temperatures — 0 for reproducible, deterministic scoring

@@ -122,7 +122,10 @@ class PhraseService(BaseService):
 
         async def _build_message(_: Any) -> list[HumanMessage]:
             content: list[str | dict[Any, Any]] = [
-                {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                }
                 for b64 in images_b64
             ]
             content.append({"type": "text", "text": prompt})
@@ -131,9 +134,9 @@ class PhraseService(BaseService):
         async def _build_rows_for_lang(vo: VisionOutput) -> list[dict[str, Any]]:
             return await self._build_rows(vo, lang)
 
-        llm = self._llm.with_structured_output(VisionBatchOutput, include_raw=True).with_config(
-            metadata={"ls_hide_inputs": True}
-        )
+        llm = self._llm.with_structured_output(
+            VisionBatchOutput, include_raw=True
+        ).with_config(metadata={"ls_hide_inputs": True})
 
         chain = (
             RunnableLambda(_build_message)
