@@ -1,6 +1,7 @@
+from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, ConfigDict
 
 
 class HTTPExceptionResponse(BaseModel):
@@ -66,3 +67,47 @@ class W5LoadResponse(WorkerBatchResponse):
     """W5 Qdrant load batch result"""
 
     upserted: int = 0
+
+
+class BasePaginated(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    per_page: int
+    page: int
+    total_count: int
+
+
+class AITokenUsageItem(BaseModel):
+    """Single AI token usage record"""
+
+    model: str
+    date: date
+    name: str
+    operation: str
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+    updated_at: datetime
+
+
+class PaginatedAiTokenUsageItemList(BasePaginated):
+    items: list[AITokenUsageItem]
+
+
+class AiTokenAggregatedItem(BaseModel):
+    """Aggregated AI token usage row"""
+
+    model: str | None
+    name: str | None
+    operation: str | None
+    input_tokens: int
+    output_tokens: int
+    total_tokens: int
+
+
+class AiTokenAggregatedResponse(BaseModel):
+    """Aggregated token usage with grand totals"""
+
+    items: list[AiTokenAggregatedItem]
+    total_input_tokens: int
+    total_output_tokens: int
