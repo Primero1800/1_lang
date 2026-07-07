@@ -20,7 +20,7 @@ EVAL_SAMPLE_SIZE_W3 = int(os.getenv("EVAL_SAMPLE_SIZE_W3", "16"))
 
 # One batch = one tag's share of the total sample
 EVAL_BATCH_SIZE = EVAL_SAMPLE_SIZE // len(TagEnum)
-EVAL_BATCH_SIZE_W2 = int(os.getenv("EVAL_BATCH_SIZE_W2", "2"))
+EVAL_BATCH_SIZE_W2 = int(os.getenv("EVAL_BATCH_SIZE_W2", "1"))
 EVAL_BATCH_SIZE_W3 = int(os.getenv("EVAL_BATCH_SIZE_W3", "4"))
 
 # T1 synthetic dataset params

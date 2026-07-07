@@ -26,6 +26,9 @@ async def main() -> None:
     dataset = client.read_dataset(dataset_name=DATASET_NAME_T1)
     examples = list(client.list_examples(dataset_id=dataset.id))
     print(f"Loaded {len(examples)} examples from '{DATASET_NAME_T1}'")
+    if not examples:
+        print("Dataset is empty — run build_dataset_t1.py first.")
+        return
 
     # 2. One batch embed call — all observations at once
     embeddings = MistralAIEmbeddings(
@@ -95,7 +98,7 @@ async def main() -> None:
     print("Running evaluation...")
     await aevaluate(
         target,
-        data=DATASET_NAME_T1,
+        data=examples,
         evaluators=[retrieval_score],
         experiment_prefix=DATASET_NAME_T1,
         client=client,
