@@ -96,4 +96,4 @@ class PhraseVectorRepository:
             )
             for vector, tag in zip(vectors, tags)
         ]
-        return await self._client.search_batch(requests=requests)
+        return await self._client.search_batch(requests=requests, raise_exception=True)

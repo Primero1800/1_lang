@@ -11,7 +11,7 @@ from app.common.exceptions import (
 from app.common.logging import log_decorator
 from app.dependencies.services import get_health_check_service_without_session
 from app.pyd.responses import HTTPExceptionResponse
-from app.services.base import BaseServiceAbstract
+from app.services.health_check_service import HealthCheckService
 
 router = APIRouter(
     prefix="/health_check",
@@ -29,7 +29,7 @@ router = APIRouter(
 @log_decorator(level=logging.INFO)
 async def health_check(
     health_check_service: Annotated[
-        BaseServiceAbstract, Depends(get_health_check_service_without_session)
+        HealthCheckService, Depends(get_health_check_service_without_session)
     ],
 ) -> None:
     """Check health of all infrastructure components

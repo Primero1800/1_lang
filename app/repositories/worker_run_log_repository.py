@@ -1,8 +1,8 @@
 import logging
-from datetime import datetime
+from datetime import date, datetime
 from typing import Any
 
-from sqlalchemy import select, update
+from sqlalchemy import ColumnElement, func, select, update
 
 from app.core.config import settings
 
@@ -108,3 +108,58 @@ class WorkerRunLogRepository(BaseRepository):
         result = await self._session.execute(stmt)
         found = {row.worker: row.finished_at for row in result}
         return {w: found.get(w) for w in workers}
+
+    @log_decorator(level=logging.DEBUG)
+    async def list_runs(
+        self,
+        worker: str | None,
+        status: WorkerStatusEnum | None,
+        started_from: date | None,
+        started_to: date | None,
+        per_page: int,
+        page: int,
+    ) -> tuple[list[WorkerRunLog], int]:
+        """Return paginated worker run log rows matching filters and total count
+
+        :param:
+            worker: prefix filter on worker name (case-insensitive)
+            status: exact status filter
+            started_from: lower bound on created_at (date, inclusive)
+            started_to: upper bound on created_at (date, inclusive)
+            per_page: page size
+            page: 1-based page number
+
+        :returns:
+            rows: matching WorkerRunLog ORM instances for the requested page
+            total_count: total number of matching rows across all pages
+        """
+        conditions: list[ColumnElement[bool]] = []
+        if worker is not None:
+            conditions.append(WorkerRunLog.worker.ilike(f"{worker}%"))
+        if status is not None:
+            conditions.append(WorkerRunLog.status == status)
+        if started_from is not None:
+            conditions.append(WorkerRunLog.created_at >= started_from)
+        if started_to is not None:
+            conditions.append(WorkerRunLog.created_at <= started_to)
+
+        total_count: int = (
+            await self._session.execute(
+                select(func.count()).select_from(WorkerRunLog).where(*conditions)
+            )
+        ).scalar_one()
+        offset = (page - 1) * per_page
+        rows = (
+            (
+                await self._session.execute(
+                    select(WorkerRunLog)
+                    .where(*conditions)
+                    .order_by(WorkerRunLog.created_at.desc())
+                    .limit(per_page)
+                    .offset(offset)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows), total_count

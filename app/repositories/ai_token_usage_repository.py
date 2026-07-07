@@ -1,11 +1,13 @@
 import logging
 from datetime import date
+from typing import Any
 
-from sqlalchemy import func
+from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
 
 from app.common.logging import log_decorator
 from app.models.ai_token_usage import AiTokenUsage
+from app.pyd.requests import AITokenFilter, Pagination
 from app.repositories.base_repository import BaseRepository
 from app.repositories.repository_error_handler import repository_error_handler
 
@@ -57,8 +59,89 @@ class AiTokenUsageRepository(BaseRepository):
         )
         await self._session.execute(stmt)
 
+    def _build_conditions(self, filters: AITokenFilter) -> list[Any]:
+        """Build SQLAlchemy WHERE conditions from AITokenFilter
+
+        :param:
+            filters: filter model with optional fields
+
+        :returns:
+            conditions: list of SQLAlchemy column expressions
+        """
+        conditions = []
+        if filters.date_from is not None:
+            conditions.append(AiTokenUsage.date >= filters.date_from)
+        if filters.date_to is not None:
+            conditions.append(AiTokenUsage.date <= filters.date_to)
+        if filters.model is not None:
+            conditions.append(AiTokenUsage.model.ilike(f"%{filters.model}%"))
+        if filters.name is not None:
+            conditions.append(AiTokenUsage.name.ilike(f"%{filters.name}%"))
+        if filters.operation is not None:
+            conditions.append(AiTokenUsage.operation.ilike(f"{filters.operation}%"))
+        return conditions
+
     @log_decorator(level=logging.DEBUG)
-    async def bulk_accumulate(self, rows: list[dict]) -> None:
+    async def list_usage(
+        self,
+        filters: AITokenFilter,
+        pagination: Pagination,
+    ) -> tuple[list[AiTokenUsage], int]:
+        """Return paginated token usage rows matching filters and total count
+
+        :param:
+            filters: filter conditions
+            pagination: page and per_page values
+
+        :returns:
+            rows: matching AiTokenUsage ORM instances for the requested page
+            total_count: total number of matching rows across all pages
+        """
+        conditions = self._build_conditions(filters)
+        total_count: int = (
+            await self._session.execute(
+                select(func.count()).select_from(AiTokenUsage).where(*conditions)
+            )
+        ).scalar_one()
+        offset = (pagination.page - 1) * pagination.per_page
+
+        rows = (
+            (
+                await self._session.execute(
+                    select(AiTokenUsage)
+                    .where(*conditions)
+                    .order_by(AiTokenUsage.date.desc())
+                    .limit(pagination.per_page)
+                    .offset(offset)
+                )
+            )
+            .scalars()
+            .all()
+        )
+        return list(rows), total_count
+
+    @log_decorator(level=logging.DEBUG)
+    async def aggregate_usage(self, filters: AITokenFilter) -> dict[str, Any]:
+        """Return summed token usage across all rows matching filters
+
+        :param:
+            filters: filter conditions
+
+        :returns:
+            row: dict with input_tokens and output_tokens sums
+        """
+        conditions = self._build_conditions(filters)
+        stmt = select(
+            func.coalesce(func.sum(AiTokenUsage.input_tokens), 0).label("input_tokens"),
+            func.coalesce(func.sum(AiTokenUsage.output_tokens), 0).label(
+                "output_tokens"
+            ),
+        ).where(*conditions)
+        result = await self._session.execute(stmt)
+        return result.one()._asdict()
+
+    @log_decorator(level=logging.DEBUG)
+    async def bulk_accumulate(self, rows: list[dict[str, Any]]) -> None:
         """Upsert multiple pre-aggregated token usage rows in a single statement
 
         :param:

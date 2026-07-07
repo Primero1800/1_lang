@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from langchain_core.runnables import RunnableLambda
 from pydantic import SecretStr
@@ -135,7 +136,7 @@ class PhraseEmbeddingService(BaseService):
         sent_ids = {p.id for p in batch}
 
         # 1. Bind sent_ids into the _save_vectors step
-        async def _save_for_batch(matched: dict[int, list[float]]) -> dict:
+        async def _save_for_batch(matched: dict[int, list[float]]) -> dict[str, Any]:
             return await self._save_vectors(matched, sent_ids)
 
         # 2. Assemble the embedding chain

@@ -262,7 +262,7 @@ class PhraseTranslationService(BaseService):
         )
 
         # 2. Bind batch context into the _save_translations step
-        async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict:
+        async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict[str, int]:
             return await self._save_translations(
                 matched, sent_ids, batch, opposite_lang
             )

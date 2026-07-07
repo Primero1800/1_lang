@@ -1,5 +1,6 @@
 import asyncio
 from datetime import date
+from typing import Any
 
 from app.adapters.queue_client import MessageQueueClientAbstract
 from app.common.enums import WorkerStatusEnum
@@ -98,7 +99,7 @@ class TokenWorkerService:
             return False
 
         # 2. Aggregate token counts per (model, operation, name) key
-        aggregated: dict[tuple, dict] = {}
+        aggregated: dict[tuple[str, ...], dict[str, Any]] = {}
         msg_ids: list[str] = []
 
         for _stream, entries in messages:

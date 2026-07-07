@@ -203,7 +203,7 @@ class PhraseDataService(BaseService):
         )
 
         # 2. Bind sent_ids into the _save_results step
-        async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict:
+        async def _save_for_batch(matched: dict[int, dict[str, Any]]) -> dict[str, int]:
             return await self._save_results(matched, sent_ids)
 
         # 3. Assemble the full LangChain processing chain
