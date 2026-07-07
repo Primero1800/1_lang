@@ -30,37 +30,6 @@ class PhraseService(BaseService):
     _OPERATION = "w1_vision"
 
     @log_decorator(level=logging.INFO)
-    async def _encode_images(self, data: dict[str, Any]) -> dict[str, Any]:
-        """Encode raw image bytes to base64
-
-        :param:
-            data: dict with 'images_raw' (list[bytes]) and 'lang' (str)
-
-        :returns:
-            dict with 'images_b64' (list[str]) and 'lang'
-        """
-        images_b64 = [base64.b64encode(img).decode() for img in data["images_raw"]]
-        return {"images_b64": images_b64, "lang": data["lang"]}
-
-    @log_decorator(level=logging.INFO)
-    async def _build_vision_message(self, data: dict[str, Any]) -> list[HumanMessage]:
-        """Resolve the vision prompt and build a multimodal HumanMessage
-
-        :param:
-            data: dict with 'images_b64' (list[str]) and 'lang' (str)
-
-        :returns:
-            messages: single-element list ready for the vision LLM
-        """
-        prompt = PromptService.get("pixtral_vision", data["lang"])
-        content: list[str | dict[Any, Any]] = [
-            {"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{b64}"}}
-            for b64 in data["images_b64"]
-        ]
-        content.append({"type": "text", "text": prompt})
-        return [HumanMessage(content=content)]
-
-    @log_decorator(level=logging.INFO)
     async def _fire_token_task(self, data: dict[str, Any]) -> VisionOutput:
         """Publish token usage to Redis Streams and return the parsed VisionOutput
 
@@ -148,14 +117,29 @@ class PhraseService(BaseService):
         :returns:
             result: dict with 'phrases_found', 'inserted', and 'skipped' counts
         """
-        llm = self._llm.with_structured_output(VisionBatchOutput, include_raw=True)
+        images_b64 = [base64.b64encode(img).decode() for img in images_raw]
+        prompt = PromptService.get("pixtral_vision", lang)
+
+        async def _build_message(_: Any) -> list[HumanMessage]:
+            content: list[str | dict[Any, Any]] = [
+                {
+                    "type": "image_url",
+                    "image_url": {"url": f"data:image/jpeg;base64,{b64}"},
+                }
+                for b64 in images_b64
+            ]
+            content.append({"type": "text", "text": prompt})
+            return [HumanMessage(content=content)]
 
         async def _build_rows_for_lang(vo: VisionOutput) -> list[dict[str, Any]]:
             return await self._build_rows(vo, lang)
 
+        llm = self._llm.with_structured_output(
+            VisionBatchOutput, include_raw=True
+        ).with_config(metadata={"ls_hide_inputs": True})
+
         chain = (
-            RunnableLambda(self._encode_images)
-            | RunnableLambda(self._build_vision_message)
+            RunnableLambda(_build_message)
             | llm
             | RunnableLambda(self._fire_token_task)
             | RunnableLambda(_build_rows_for_lang)
@@ -163,7 +147,7 @@ class PhraseService(BaseService):
         ).with_config(run_name=self._OPERATION)
 
         try:
-            return await chain.ainvoke({"images_raw": images_raw, "lang": lang})
+            return await chain.ainvoke({"lang": lang})
         except VisionPipelineException:
             raise
         except Exception as exc:
