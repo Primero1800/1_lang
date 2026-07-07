@@ -2,14 +2,14 @@
 Run W1 evaluation experiment in LangSmith.
 Run: poetry run python -m evaluation.run_w1
 
-Fetches examples from the dataset, batches them (EVAL_BATCH_SIZE per LLM call),
-scores each batch via tag_relevance evaluator, logs results to LangSmith.
+Pre-computes tag-relevance scores for all examples via batched LLM calls,
+then logs per-example results to LangSmith via aevaluate().
 """
 
-import uuid
-from datetime import datetime, timezone
+import asyncio
 
 from langsmith import Client
+from langsmith.evaluation import aevaluate
 
 from evaluation.config import DATASET_NAME_W1, EVAL_BATCH_SIZE  # triggers load_dotenv()
 from evaluation.evaluators.tag_relevance import evaluate_batch
@@ -20,56 +20,46 @@ def _chunks(lst: list, size: int):
         yield lst[i : i + size]
 
 
-if __name__ == "__main__":
+async def main() -> None:
     client = Client()
     dataset = client.read_dataset(dataset_name=DATASET_NAME_W1)
     examples = list(client.list_examples(dataset_id=dataset.id))
     print(f"Loaded {len(examples)} examples from '{DATASET_NAME_W1}'")
+    if not examples:
+        print("Dataset is empty — run build_dataset_w1.py first.")
+        return
 
-    experiment_name = f"w1-tag-relevance-{datetime.now(timezone.utc):%Y%m%d-%H%M%S}"
-    client.create_project(experiment_name, reference_dataset_id=str(dataset.id))
-    print(f"Experiment: '{experiment_name}'")
-
-    total = 0
+    # Pre-compute all scores in batches before aevaluate()
+    scores_map: dict[str, dict] = {}
     for batch_num, batch in enumerate(_chunks(examples, EVAL_BATCH_SIZE), start=1):
         items = [
             {"n": j + 1, "phrase": ex.inputs["phrase"], "tag": ex.inputs["tag"]}
             for j, ex in enumerate(batch)
         ]
-        print(
-            f"  batch {batch_num}: scoring {len(items)} phrases...", end=" ", flush=True
-        )
-        scores = evaluate_batch(items)
-        scores_by_n = {s.n: s for s in scores}
+        print(f"  batch {batch_num}: scoring {len(items)} phrases...", end=" ", flush=True)
+        for ex, score in zip(batch, evaluate_batch(items)):
+            scores_map[ex.inputs["phrase"]] = {
+                "tag_relevance": score.score,
+                "reasoning": score.reasoning,
+            }
+        print("done")
 
-        now = datetime.now(timezone.utc)
-        for j, ex in enumerate(batch):
-            score = scores_by_n.get(j + 1)
-            if score is None:
-                print(f"\n  WARNING: no score returned for item {j + 1}")
-                continue
-            run_id = str(uuid.uuid4())
-            client.create_run(
-                id=run_id,
-                name="target",
-                run_type="chain",
-                inputs=ex.inputs,
-                outputs={
-                    "tag": ex.inputs["tag"],
-                    "reasoning": score.reasoning,
-                },
-                project_name=experiment_name,
-                reference_example_id=str(ex.id),
-                start_time=now,
-                end_time=now,
-            )
-            client.create_feedback(
-                run_id=run_id,
-                key="tag_relevance",
-                score=score.score,
-                comment=score.reasoning,
-            )
-        total += len(batch)
-        print(f"done ({total}/{len(examples)})")
+    async def target(inputs: dict) -> dict:
+        return scores_map[inputs["phrase"]]
 
-    print(f"Complete. View at: https://smith.langchain.com")
+    def tag_relevance(outputs: dict) -> dict:
+        return {"key": "tag_relevance", "score": outputs["tag_relevance"]}
+
+    print("Running evaluation...")
+    await aevaluate(
+        target,
+        data=DATASET_NAME_W1,
+        evaluators=[tag_relevance],
+        experiment_prefix=DATASET_NAME_W1,
+        client=client,
+    )
+    print("Done. View results in LangSmith.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())
