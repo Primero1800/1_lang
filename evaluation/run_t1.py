@@ -98,7 +98,7 @@ async def main() -> None:
     print("Running evaluation...")
     await aevaluate(
         target,
-        data=DATASET_NAME_T1,
+        data=examples,
         evaluators=[retrieval_score],
         experiment_prefix=DATASET_NAME_T1,
         client=client,

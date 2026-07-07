@@ -37,7 +37,12 @@ async def main() -> None:
             for j, ex in enumerate(batch)
         ]
         print(f"  batch {batch_num}: scoring {len(items)} phrases...", end=" ", flush=True)
-        for ex, score in zip(batch, evaluate_batch(items)):
+        scores_by_n = {s.n: s for s in evaluate_batch(items)}
+        for j, ex in enumerate(batch):
+            score = scores_by_n.get(j + 1)
+            if score is None:
+                print(f"\n  WARNING: no score returned for item {j + 1}")
+                continue
             scores_map[ex.inputs["phrase"]] = {
                 "tag_relevance": score.score,
                 "reasoning": score.reasoning,
@@ -45,15 +50,15 @@ async def main() -> None:
         print("done")
 
     async def target(inputs: dict) -> dict:
-        return scores_map[inputs["phrase"]]
+        return scores_map.get(inputs["phrase"], {})
 
     def tag_relevance(outputs: dict) -> dict:
-        return {"key": "tag_relevance", "score": outputs["tag_relevance"]}
+        return {"key": "tag_relevance", "score": outputs.get("tag_relevance", 0)}
 
     print("Running evaluation...")
     await aevaluate(
         target,
-        data=DATASET_NAME_W1,
+        data=examples,
         evaluators=[tag_relevance],
         experiment_prefix=DATASET_NAME_W1,
         client=client,
