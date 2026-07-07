@@ -6,6 +6,7 @@ from app.api.health_check import router as healthcheck_router
 from app.api.pipeline_router import router as pipeline_router
 from app.api.test_router import router as test_router
 from app.api.tokens_router import router as tokens_router
+from app.api.workers_router import router as workers_router
 
 
 from app.common.logging import log_decorator
@@ -36,3 +37,4 @@ router.include_router(healthcheck_router)
 router.include_router(test_router)
 router.include_router(pipeline_router)
 router.include_router(tokens_router)
+router.include_router(workers_router)

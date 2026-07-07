@@ -3,6 +3,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field, ConfigDict
 
+from app.common.enums import WorkerStatusEnum
+
 
 class HTTPExceptionResponse(BaseModel):
     """Schema for HTTP exception response"""
@@ -70,6 +72,8 @@ class W5LoadResponse(WorkerBatchResponse):
 
 
 class BasePaginated(BaseModel):
+    """Base schema for paginated list responses"""
+
     model_config = ConfigDict(from_attributes=True)
 
     per_page: int
@@ -91,6 +95,8 @@ class AITokenUsageItem(BaseModel):
 
 
 class PaginatedAiTokenUsageItemList(BasePaginated):
+    """Paginated list of AI token usage records"""
+
     items: list[AITokenUsageItem]
 
 
@@ -105,9 +111,21 @@ class AiTokenAggregatedItem(BaseModel):
     total_tokens: int
 
 
-class AiTokenAggregatedResponse(BaseModel):
-    """Aggregated token usage with grand totals"""
+class WorkerRunLogItem(BaseModel):
+    """Single worker run log record"""
 
-    items: list[AiTokenAggregatedItem]
-    total_input_tokens: int
-    total_output_tokens: int
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int
+    worker: str
+    status: WorkerStatusEnum
+    batch_size: int | None
+    finished_at: datetime | None
+    result: dict[str, Any] | None
+    created_at: datetime
+
+
+class PaginatedWorkerRunLogList(BasePaginated):
+    """Paginated list of worker run log records"""
+
+    items: list[WorkerRunLogItem]

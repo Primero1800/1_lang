@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from app.common.logging import log_decorator
 from app.pyd.requests import AITokenFilter, Pagination
@@ -13,7 +14,7 @@ class TokenUsageService(BaseService):
         self,
         filters: AITokenFilter,
         pagination: Pagination,
-    ) -> dict:
+    ) -> dict[str, Any]:
         """Return paginated token usage records matching filters
 
         :param:
@@ -23,7 +24,7 @@ class TokenUsageService(BaseService):
         :returns:
             result: dict with per_page, page, total_count and items list
         """
-        rows, total_count = await self.uow.ai_token_usage_repository.list_usage(
+        rows, total_count = await self.uow.ai_token_usage_repository.list_usage(  # type: ignore[union-attr]
             filters=filters,
             pagination=pagination,
         )
@@ -49,7 +50,7 @@ class TokenUsageService(BaseService):
         }
 
     @log_decorator(level=logging.INFO)
-    async def aggregate_usage(self, filters: AITokenFilter) -> dict:
+    async def aggregate_usage(self, filters: AITokenFilter) -> dict[str, Any]:
         """Return summed token usage for all rows matching filters
 
         :param:
@@ -58,7 +59,7 @@ class TokenUsageService(BaseService):
         :returns:
             result: flat dict with filter context fields and token sums
         """
-        row = await self.uow.ai_token_usage_repository.aggregate_usage(filters=filters)
+        row = await self.uow.ai_token_usage_repository.aggregate_usage(filters=filters)  # type: ignore[union-attr]
         input_tokens = 0 if filters.exclude_input else row["input_tokens"]
         output_tokens = 0 if filters.exclude_output else row["output_tokens"]
         return {

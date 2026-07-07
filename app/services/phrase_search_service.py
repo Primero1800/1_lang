@@ -96,7 +96,7 @@ class PhraseSearchService(BaseService):
             return {"message": PromptService.get_restricted_message(lang)}
 
         # 1. Closure: build vision message from captured image_raw, lang, allowed_tags
-        async def _build_message(_: dict) -> list[HumanMessage]:
+        async def _build_message(_: dict[str, Any]) -> list[HumanMessage]:
             prompt = PromptService.get_t1_vision_prompt(
                 lang=lang, allowed_tags=allowed_tags
             )
@@ -245,7 +245,7 @@ class PhraseSearchService(BaseService):
         :returns:
             output: dict of {original: {tag: str, phrases: list[str]}}
         """
-        output: dict[str, dict] = {}
+        output: dict[str, dict[str, Any]] = {}
         for points in results:
             for point in points:
                 if not point.payload:

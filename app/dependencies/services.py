@@ -20,6 +20,7 @@ from app.services.phrase_service import PhraseService
 from app.services.phrase_translation_service import PhraseTranslationService
 from app.services.phrase_search_service import PhraseSearchService
 from app.services.token_usage_service import TokenUsageService
+from app.services.worker_run_log_query_service import WorkerRunLogQueryService
 from app.uow import UnitOfWork, get_uow_factory, get_uow
 
 
@@ -128,6 +129,9 @@ async def get_test_service_without_session(
 
 
 get_token_usage_service = _create_service(TokenUsageService)
+
+
+get_worker_run_log_service = _create_service(WorkerRunLogQueryService)
 
 get_phrase_service = _create_service(PhraseService)
 get_phrase_service_without_session = _create_service_without_session(PhraseService)

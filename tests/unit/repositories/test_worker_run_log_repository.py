@@ -263,3 +263,142 @@ async def test_get_last_runs_ignores_running_logs(test_session_maker, empty_db) 
         result = await repo.get_last_runs(["w3_translate"])
 
     assert result["w3_translate"] is None
+
+
+# --- list_runs ---
+
+
+@pytest.mark.asyncio
+async def test_list_runs_returns_rows_and_count(test_session_maker, empty_db) -> None:
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        await repo.create("w2_generate")
+        await repo.create("w3_translate")
+        await session.commit()
+
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        rows, total = await repo.list_runs(
+            worker=None,
+            status=None,
+            started_from=None,
+            started_to=None,
+            per_page=25,
+            page=1,
+        )
+
+    assert total == 2
+    assert len(rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_runs_paginates_correctly(test_session_maker, empty_db) -> None:
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        for i in range(5):
+            await repo.create(f"w{i}_worker")
+        await session.commit()
+
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        rows, total = await repo.list_runs(
+            worker=None,
+            status=None,
+            started_from=None,
+            started_to=None,
+            per_page=2,
+            page=2,
+        )
+
+    assert total == 5
+    assert len(rows) == 2
+
+
+@pytest.mark.asyncio
+async def test_list_runs_orders_by_created_at_desc(
+    test_session_maker, empty_db
+) -> None:
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        await repo.create("w2_generate")
+        await repo.create("w3_translate")
+        await session.commit()
+
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        rows, _ = await repo.list_runs(
+            worker=None,
+            status=None,
+            started_from=None,
+            started_to=None,
+            per_page=25,
+            page=1,
+        )
+
+    assert rows[0].created_at >= rows[1].created_at
+
+
+@pytest.mark.asyncio
+async def test_list_runs_filters_by_worker_prefix(test_session_maker, empty_db) -> None:
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        await repo.create("w2_generate")
+        await repo.create("token_worker")
+        await session.commit()
+
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        rows, total = await repo.list_runs(
+            worker="w2",
+            status=None,
+            started_from=None,
+            started_to=None,
+            per_page=25,
+            page=1,
+        )
+
+    assert total == 1
+    assert rows[0].worker == "w2_generate"
+
+
+@pytest.mark.asyncio
+async def test_list_runs_filters_by_status(test_session_maker, empty_db) -> None:
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        log_id = await repo.create("w2_generate")
+        await repo.finish(log_id, WorkerStatusEnum.DONE)
+        await repo.create("w3_translate")
+        await session.commit()
+
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        rows, total = await repo.list_runs(
+            worker=None,
+            status=WorkerStatusEnum.RUNNING,
+            started_from=None,
+            started_to=None,
+            per_page=25,
+            page=1,
+        )
+
+    assert total == 1
+    assert rows[0].worker == "w3_translate"
+
+
+@pytest.mark.asyncio
+async def test_list_runs_returns_empty_for_no_match(
+    test_session_maker, empty_db
+) -> None:
+    async with test_session_maker() as session:
+        repo = WorkerRunLogRepository(session)
+        rows, total = await repo.list_runs(
+            worker=None,
+            status=None,
+            started_from=None,
+            started_to=None,
+            per_page=25,
+            page=1,
+        )
+
+    assert total == 0
+    assert rows == []

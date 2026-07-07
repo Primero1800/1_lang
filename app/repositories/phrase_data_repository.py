@@ -1,4 +1,5 @@
 import logging
+from typing import Any
 
 from sqlalchemy import func, select
 from sqlalchemy.dialects.postgresql import insert as pg_insert
@@ -14,7 +15,7 @@ class PhraseDataRepository(BaseRepository):
     """Repository for creating and updating PhraseData variant records"""
 
     @log_decorator(level=logging.DEBUG)
-    async def bulk_upsert_variants(self, rows: list[dict]) -> None:
+    async def bulk_upsert_variants(self, rows: list[dict[str, Any]]) -> None:
         """Insert or update phrase_data rows by phrase_id
 
         :param:
