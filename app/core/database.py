@@ -43,7 +43,7 @@ async def get_session() -> AsyncGenerator[AsyncSession, None]:
         except SQLAlchemyError as exc:
             logger.error("Unexpected error during session:", exc_info=exc)
             await session.rollback()
-            raise exc
+            raise
         finally:
             await session.close()
 

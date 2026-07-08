@@ -17,6 +17,15 @@ from app.uow import UnitOfWork
 class PhraseLoadingService(BaseService):
     """W5 worker service: loads phrase embeddings and variants into Qdrant"""
 
+    _log_operation = "W5, loading"
+
+    _base_status = PhraseStatusEnum.EMBEDDING_DONE
+    _in_progress_status = PhraseStatusEnum.LOADING_IN_PROGRESS
+    _priority_status = PhraseStatusEnum.LOADING_FAILED
+
+    _success_status = PhraseStatusEnum.LOADING_DONE
+    _failed_status = PhraseStatusEnum.LOADING_FAILED
+
     def __init__(
         self,
         base_deps: BaseDeps,
@@ -53,9 +62,9 @@ class PhraseLoadingService(BaseService):
         async with self.uow_factory as uow:
             # 1. Claim a batch of phrases eligible for loading
             batch = await uow.phrase_repository.get_batch_for_processing(
-                in_progress_status=PhraseStatusEnum.LOADING_IN_PROGRESS,
-                priority_status=PhraseStatusEnum.LOADING_FAILED,
-                base_statuses=[PhraseStatusEnum.EMBEDDING_DONE],
+                in_progress_status=self._in_progress_status,
+                priority_status=self._priority_status,
+                base_statuses=[self._base_status],
                 limit=batch_size,
             )
             if not batch:
@@ -63,7 +72,7 @@ class PhraseLoadingService(BaseService):
             # 2. Log each chosen phrase
             for i, member in enumerate(batch, start=1):
                 logger.info(
-                    f"[W5, loading] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
+                    f"[{self._log_operation}] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
                 )
             ids = [p.id for p in batch]
             # 3. Fetch embeddings and variants for the batch
@@ -76,7 +85,7 @@ class PhraseLoadingService(BaseService):
             # 4. Mark phrases as in-progress to prevent double-claiming
             await uow.phrase_repository.update_status(
                 ids=ids,
-                status=PhraseStatusEnum.LOADING_IN_PROGRESS,
+                status=self._in_progress_status,
             )
         # 5. Build lookup maps by phrase_id
         embeddings_map = {e.phrase_id: e.embedding for e in embeddings}
@@ -105,9 +114,9 @@ class PhraseLoadingService(BaseService):
         for phrase in batch:
             embedding = embeddings_map.get(phrase.id)
             variants = variants_map.get(phrase.id)
-            if not embedding or not variants:
+            if not embedding or variants is None:
                 logger.warning(
-                    f"[W5, loading] id={phrase.id} missing {'embedding' if not embedding else 'variants'} — skipping"
+                    f"[{self._log_operation}] id={phrase.id} missing {'embedding' if not embedding else 'variants'} — skipping"
                 )
                 failed_ids.add(phrase.id)
                 continue
@@ -159,7 +168,7 @@ class PhraseLoadingService(BaseService):
                     upsert_failed_ids,
                 ) = await self.loading_repository.bulk_upsert(points)
                 logger.info(
-                    f"[W5, loading] upserted to Qdrant: {upserted_count}/{len(points)}"
+                    f"[{self._log_operation}] upserted to Qdrant: {upserted_count}/{len(points)}"
                 )
 
             failed_ids = build_failed_ids | upsert_failed_ids
@@ -168,20 +177,20 @@ class PhraseLoadingService(BaseService):
             # 4. Update statuses in DB
             async with self.uow_factory as uow:
                 if done_ids:
-                    logger.info(f"[W5, loading] done ids: {sorted(done_ids)}")
+                    logger.info(f"[{self._log_operation}] done ids: {sorted(done_ids)}")
                     await uow.phrase_repository.update_status(
-                        ids=list(done_ids), status=PhraseStatusEnum.LOADING_DONE
+                        ids=list(done_ids), status=self._success_status
                     )
                 if failed_ids:
-                    logger.info(f"[W5, loading] failed ids: {failed_ids}")
+                    logger.info(f"[{self._log_operation}] failed ids: {failed_ids}")
                     await uow.phrase_repository.update_status(
-                        ids=list(failed_ids), status=PhraseStatusEnum.LOADING_FAILED
+                        ids=list(failed_ids), status=self._failed_status
                     )
         except Exception as exc:
-            logger.error("[W5] loading failed: %s", exc, exc_info=exc)
+            logger.error(f"[{self._log_operation}] loading failed: {exc}", exc_info=exc)
             async with self.uow_factory as uow:
                 await uow.phrase_repository.update_status(
-                    ids=list(sent_ids), status=PhraseStatusEnum.LOADING_FAILED
+                    ids=list(sent_ids), status=self._failed_status
                 )
             raise
 

@@ -7,13 +7,13 @@ from langchain_core.runnables import RunnableLambda
 from langchain_mistralai import ChatMistralAI
 from pydantic import SecretStr
 
-from app.common.enums import LangEnum, PhraseStatusEnum
+from app.common.enums import LangEnum
 from app.common.exceptions import GenerationPipelineException
 from app.common.logging import log_decorator, logger
 from app.core.config import settings
 from app.models.phrases import Phrase
 from app.pyd.ai_schemas import VariantsResponse
-from app.services.base import BaseService
+from app.services.base import BaseWorkerService
 from app.services.prompt_service import PromptService
 
 _W2_MODEL = settings.MISTRAL_MODEL
@@ -24,54 +24,14 @@ _w2_llm = ChatMistralAI(
 )
 
 
-class PhraseDataService(BaseService):
+class PhraseDataService(BaseWorkerService):
     """W2 worker service: fetches draft phrases, generates tone variants via Mistral, saves results"""
 
     _llm = _w2_llm
-    _OPERATION = "w2_generate"
-
-    @log_decorator(level=logging.INFO)
-    async def _fetch_batch(self, batch_size: int) -> list[Phrase]:
-        """Atomically claim a batch of phrases ready for variant generation
-
-        :param:
-            batch_size: maximum number of phrases to claim in one call
-
-        :returns:
-            batch: list of claimed Phrase objects (empty if nothing is ready)
-        """
-        async with self.uow_factory as uow:
-            # 1. Pick the highest-priority phrase (DRAFT / stuck) to anchor the batch lang
-            first = await uow.phrase_repository.get_first_for_processing(
-                in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
-                priority_status=PhraseStatusEnum.GENERATING_FAILED,
-                base_statuses=[PhraseStatusEnum.DRAFT],
-            )
-            if not first:
-                return []
-            logger.info(
-                f"[W2, generating] First chosen: id={first.id}, lang={first.lang}, status={first.status}"
-            )
-            # 2. Fill the rest of the batch with same-lang phrases
-            rest = await uow.phrase_repository.get_batch_for_processing(
-                in_progress_status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
-                priority_status=PhraseStatusEnum.GENERATING_FAILED,
-                base_statuses=[PhraseStatusEnum.DRAFT],
-                lang=first.lang,
-                exclude_id=first.id,
-                limit=batch_size - 1,
-            )
-            batch = [first, *rest]
-            for i, member in enumerate(batch, start=1):
-                logger.info(
-                    f"[W2, generating] {i} chosen: id={member.id}, lang={member.lang}, status={member.status}"
-                )
-            # 3. Mark all claimed phrases as in-progress to prevent duplicate claiming
-            await uow.phrase_repository.update_status(
-                ids=[p.id for p in batch],
-                status=PhraseStatusEnum.GENERATING_IN_PROGRESS,
-            )
-        return batch
+    _operation = "w2_generate"
+    _log_operation = "W2, generating"
+    _llm_model = _W2_MODEL
+    _pipeline_exception_class = GenerationPipelineException
 
     @log_decorator(level=logging.INFO)
     async def _build_w2_message(self, data: dict[str, Any]) -> list[BaseMessage]:
@@ -91,30 +51,6 @@ class PhraseDataService(BaseService):
             ensure_ascii=False,
         )
         return [SystemMessage(content=system), HumanMessage(content=payload)]
-
-    @log_decorator(level=logging.INFO)
-    async def _fire_token_task(self, data: dict[str, Any]) -> VariantsResponse:
-        """Publish token usage to Redis Streams and return the parsed response
-
-        :param:
-            data: dict with 'raw' (AIMessage) and 'parsed' (VariantsResponse)
-
-        :returns:
-            parsed: the structured response from the LLM
-        """
-        parsed: VariantsResponse | None = data.get("parsed")
-        if parsed is None:
-            raise GenerationPipelineException(
-                detail="LLM returned invalid structured output"
-            )
-        usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
-        self._queue_token_usage(
-            model=_W2_MODEL,
-            operation=self._OPERATION,
-            input_tokens=usage.get("input_tokens", 0),
-            output_tokens=usage.get("output_tokens", 0),
-        )
-        return parsed
 
     @log_decorator(level=logging.INFO)
     async def _parse_variants(
@@ -163,14 +99,14 @@ class PhraseDataService(BaseService):
                 ]
                 await uow.phrase_data_repository.bulk_upsert_variants(rows)
             if returned_ids:
-                logger.info(f"[W2, generating]: returned ids {returned_ids}")
+                logger.info(f"[{self._log_operation}]: returned ids {returned_ids}")
                 await uow.phrase_repository.update_status(
-                    ids=list(returned_ids), status=PhraseStatusEnum.GENERATING_DONE
+                    ids=list(returned_ids), status=self._success_status
                 )
             if failed_ids:
-                logger.info(f"[W2, generating]: failed ids {failed_ids}")
+                logger.info(f"[{self._log_operation}]: failed ids {failed_ids}")
                 await uow.phrase_repository.update_status(
-                    ids=list(failed_ids), status=PhraseStatusEnum.GENERATING_FAILED
+                    ids=list(failed_ids), status=self._failed_status
                 )
 
         return {
@@ -213,18 +149,18 @@ class PhraseDataService(BaseService):
             | RunnableLambda(self._fire_token_task)
             | RunnableLambda(self._parse_variants)
             | RunnableLambda(_save_for_batch)
-        ).with_config(run_name=self._OPERATION)
+        ).with_config(run_name=self._operation)
 
         # 4. Invoke the chain; mark all phrases as failed on any error
         try:
             return await chain.ainvoke({"batch": batch, "lang": lang})
         except Exception as exc:
-            if not isinstance(exc, GenerationPipelineException):
-                logger.error("[W2] generation failed: %s", exc, exc_info=exc)
+            if not isinstance(exc, self._pipeline_exception_class):
+                logger.error(f"[{self._log_operation}] failed: {exc}", exc_info=exc)
             async with self.uow_factory as uow:
                 await uow.phrase_repository.update_status(
-                    ids=list(sent_ids), status=PhraseStatusEnum.GENERATING_FAILED
+                    ids=list(sent_ids), status=self._failed_status
                 )
-            if isinstance(exc, GenerationPipelineException):
+            if isinstance(exc, self._pipeline_exception_class):
                 raise
-            raise GenerationPipelineException(detail=str(exc)) from exc
+            raise self._pipeline_exception_class(detail=str(exc)) from exc

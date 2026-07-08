@@ -12,7 +12,7 @@ from app.common.exceptions import VisionPipelineException
 from app.common.logging import log_decorator, logger
 from app.core.config import settings
 from app.pyd.ai_schemas import VisionBatchOutput, VisionOutput
-from app.services.base import BaseService
+from app.services.base import BaseWorkerService
 from app.services.prompt_service import PromptService
 
 _VISION_MODEL = settings.MISTRAL_VISION_MODEL
@@ -23,11 +23,16 @@ _vision_llm = ChatMistralAI(
 )
 
 
-class PhraseService(BaseService):
+class PhraseService(BaseWorkerService):
     """Service for processing images through the vision pipeline and persisting phrases"""
 
     _llm = _vision_llm
-    _OPERATION = "w1_vision"
+    _operation = "w1_vision"
+    _log_operation = "W1, vision"
+    _llm_model = _VISION_MODEL
+    _pipeline_exception_class = VisionPipelineException
+
+    _success_status = PhraseStatusEnum.DRAFT
 
     @log_decorator(level=logging.INFO)
     async def _fire_token_task(self, data: dict[str, Any]) -> VisionOutput:
@@ -41,14 +46,14 @@ class PhraseService(BaseService):
         """
         parsed: VisionBatchOutput | None = data.get("parsed")
         if parsed is None:
-            raise VisionPipelineException(
+            raise self._pipeline_exception_class(
                 detail="LLM returned invalid structured output"
             )
         all_phrases = [phrase for photo in parsed.photos for phrase in photo.phrases]
         usage = (data["raw"].usage_metadata or {}) if data.get("raw") else {}
         self._queue_token_usage(
-            model=_VISION_MODEL,
-            operation=self._OPERATION,
+            model=self._llm_model,
+            operation=self._operation,
             input_tokens=usage.get("input_tokens", 0),
             output_tokens=usage.get("output_tokens", 0),
         )
@@ -78,7 +83,7 @@ class PhraseService(BaseService):
                         "original": original,
                         "tag": item.tag,
                         "lang": lang,
-                        "status": PhraseStatusEnum.DRAFT,
+                        "status": self._success_status,
                     }
                 )
         return rows
@@ -94,7 +99,7 @@ class PhraseService(BaseService):
             result: dict with 'phrases_found', 'inserted', and 'skipped' counts
         """
         if not rows:
-            raise VisionPipelineException(
+            raise self._pipeline_exception_class(
                 detail="No valid phrases extracted from images"
             )
         async with self.uow_factory as uow:
@@ -144,12 +149,14 @@ class PhraseService(BaseService):
             | RunnableLambda(self._fire_token_task)
             | RunnableLambda(_build_rows_for_lang)
             | RunnableLambda(self._save_phrases)
-        ).with_config(run_name=self._OPERATION)
+        ).with_config(run_name=self._operation)
 
         try:
             return await chain.ainvoke({"lang": lang})
-        except VisionPipelineException:
+        except self._pipeline_exception_class:
             raise
         except Exception as exc:
-            logger.error("[W1] vision pipeline failed: %s", exc, exc_info=exc)
-            raise VisionPipelineException(detail=str(exc)) from exc
+            logger.error(
+                f"[{self._log_operation}] pipeline failed: {exc}", exc_info=exc
+            )
+            raise self._pipeline_exception_class(detail=str(exc)) from exc
