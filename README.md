@@ -121,18 +121,18 @@ graph TB
     Client(["Client (curl / browser)"])
 
     subgraph Service["Docker: service (FastAPI)"]
-        API["HTTP API\n/pipeline /tokens /workers\n/health_check /version"]
-        SCH["APScheduler\n(cron)"]
-        PW["PipelineWorkersService\nW2 W3 W4 W5 tasks"]
-        TW["TokenWorkerService\n(background)"]
-        MW["MonitoringMiddleware\n(slow requests / 500)"]
+        API["HTTP API<br>/pipeline /tokens /workers<br>/health_check /version"]
+        SCH["APScheduler<br>(cron)"]
+        PW["PipelineWorkersService<br>W2 W3 W4 W5 tasks"]
+        TW["TokenWorkerService<br>(background)"]
+        MW["MonitoringMiddleware<br>(slow requests / 500)"]
     end
 
-    DB[("PostgreSQL\nphrases, phrase_data\nphrase_embeddings\nai_token_usage\nworker_run_log")]
-    REDIS[("Redis\nStreams: stream:tokens\nPub/Sub: pipeline:status")]
-    QDL[("Qdrant Local\nbcp collection")]
-    QDC[("Qdrant Cloud\nmain collection")]
-    MIS(["Mistral API\npixtral / small / embed"])
+    DB[("PostgreSQL<br>phrases, phrase_data<br>phrase_embeddings<br>ai_token_usage<br>worker_run_log")]
+    REDIS[("Redis<br>Streams: stream:tokens<br>Pub/Sub: pipeline:status")]
+    QDL[("Qdrant Local<br>bcp collection")]
+    QDC[("Qdrant Cloud<br>main collection")]
+    MIS(["Mistral API<br>pixtral / small / embed"])
 
     Client -->|"HTTP"| MW
     MW --> API
@@ -153,16 +153,16 @@ graph TB
 
 ```mermaid
 flowchart TD
-    HTTP["POST /pipeline/w1_upload\n(HTTP - вручную или скрипт)"]
-    W1["W1 - PhraseService\nPixtral vision -> parse -> bulk_create"]
+    HTTP["POST /pipeline/w1_upload<br>(HTTP - вручную или скрипт)"]
+    W1["W1 - PhraseService<br>Pixtral vision -> parse -> bulk_create"]
     DRAFT["phrases.status = draft"]
 
-    SCH["APScheduler (cron)\npodschityvat ready count\nPUBLISH -> pipeline:status"]
+    SCH["APScheduler (cron)<br>считает ready count<br>PUBLISH -> pipeline:status"]
 
-    W2["W2 - PhraseDataService\nMistral small -> variants A-E\n-> phrase_data JSONB"]
-    W3["W3 - PhraseTranslationService\nMistral small -> translate\n-> new phrase (other lang)"]
-    W4["W4 - PhraseEmbeddingService\nMistral embed batch 200\n-> phrase_embeddings vector"]
-    W5["W5 - PhraseLoadingService\njoin phrases+data+embeddings\n-> Qdrant upsert"]
+    W2["W2 - PhraseDataService<br>Mistral small -> variants A-E<br>-> phrase_data JSONB"]
+    W3["W3 - PhraseTranslationService<br>Mistral small -> translate<br>-> new phrase (other lang)"]
+    W4["W4 - PhraseEmbeddingService<br>Mistral embed batch 200<br>-> phrase_embeddings vector"]
+    W5["W5 - PhraseLoadingService<br>join phrases+data+embeddings<br>-> Qdrant upsert"]
     DONE["loading_done"]
 
     HTTP --> W1 --> DRAFT
@@ -271,13 +271,13 @@ sequenceDiagram
 ```mermaid
 graph LR
     subgraph Dev["Dev / Preprocessing (QDRANT_MAIN_ENABLED=false)"]
-        W5D["W5"] -->|upsert| QDL["Qdrant Local\nlocalhost:6333"]
+        W5D["W5"] -->|upsert| QDL["Qdrant Local<br>localhost:6333"]
         T1D["T1 Search"] -->|search| QDL
     end
 
     subgraph Prod["Prod (QDRANT_MAIN_ENABLED=true)"]
         W5P["W5"] -->|upsert| QDL2["Qdrant Local"]
-        W5P -->|upsert (mirror)| QDC["Qdrant Cloud\nQDRANT_MAIN_URL"]
+        W5P -->|upsert - mirror| QDC["Qdrant Cloud<br>QDRANT_MAIN_URL"]
         T1P["T1 Search (prod)"] -->|search| QDC
     end
 ```
@@ -371,8 +371,8 @@ sequenceDiagram
 ```mermaid
 graph LR
     RQ["HTTP Request"]
-    UOW["UnitOfWork\n(request-scoped)"]
-    BD["BaseDeps\n(uow_factory,\nvector_client,\nvector_client_main,\nqueue_client)"]
+    UOW["UnitOfWork<br>(request-scoped)"]
+    BD["BaseDeps<br>(uow_factory,<br>vector_client,<br>vector_client_main,<br>queue_client)"]
 
     CS["_create_service()"]
     CSS["_create_service_without_session()"]
@@ -399,21 +399,21 @@ graph LR
 ```mermaid
 flowchart LR
     subgraph Build["build_dataset_*.py"]
-        B1["build_dataset_w1\nPhrase quality samples"]
-        B2["build_dataset_w2\nVariants quality samples"]
-        B3["build_dataset_w3\nTranslation samples"]
-        BT["build_dataset_t1\nSynthetic observations\nper tag + lang"]
+        B1["build_dataset_w1<br>Phrase quality samples"]
+        B2["build_dataset_w2<br>Variants quality samples"]
+        B3["build_dataset_w3<br>Translation samples"]
+        BT["build_dataset_t1<br>Synthetic observations<br>per tag + lang"]
     end
 
-    LS[("LangSmith\ndatasets")]
+    LS[("LangSmith<br>datasets")]
 
     subgraph Run["run_*.py"]
-        R2["run_w2\nLLM-as-judge: Mistral\ntone_gradient, coherence\ngender_match"]
-        R3["run_w3\nLLM-as-judge: Mistral\ngrammar quality"]
-        RT["run_t1\nQdrant similarity score\n(no LLM judge)"]
+        R2["run_w2<br>LLM-as-judge: Mistral<br>tone_gradient, coherence<br>gender_match"]
+        R3["run_w3<br>LLM-as-judge: Mistral<br>grammar quality"]
+        RT["run_t1<br>Qdrant similarity score<br>(no LLM judge)"]
     end
 
-    LSE[("LangSmith\nexperiments")]
+    LSE[("LangSmith<br>experiments")]
 
     Build -->|"upload examples"| LS
     LS -->|"load dataset"| Run
