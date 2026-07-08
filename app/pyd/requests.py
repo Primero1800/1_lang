@@ -80,11 +80,11 @@ class AITokenFilter(BaseModel):
     ]
     exclude_input: Annotated[
         bool | None,
-        Query(default=None, description="Исключить строки с input_tokens > 0"),
+        Query(default=None, description="Обнулить input_tokens в ответе"),
     ]
     exclude_output: Annotated[
         bool | None,
-        Query(default=None, description="Исключить строки с output_tokens > 0"),
+        Query(default=None, description="Обнулить output_tokens в ответе"),
     ]
 
     @field_validator("operation")

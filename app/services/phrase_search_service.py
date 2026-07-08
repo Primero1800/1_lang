@@ -37,11 +37,15 @@ _t1_embeddings = TrackedMistralEmbeddings(
 class PhraseSearchService(BaseService):
     """T1 search service: vision → embed → Qdrant search pipeline"""
 
-    _vision_llm = _t1_vision_llm
-    _t1_embeddings = _t1_embeddings
-    _OPERATION = "t1_search"
-    _EMBED_OPERATION = "t1_embed"
-    _VISION_OPERATION = "t1_vision"
+    _llm_vision = _t1_vision_llm
+    _model_vision = _T1_VISION_MODEL
+    _llm_embeddings = _t1_embeddings
+    _model_embeddings = _T1_EMBED_MODEL
+    _operation = "t1_search"
+    _log_operation = "T1, searching"
+    _embed_operation = "t1_embed"
+    _vision_operation = "t1_vision"
+    _pipeline_exception_class = T1PipelineException
 
     def __init__(
         self,
@@ -92,7 +96,9 @@ class PhraseSearchService(BaseService):
         }
         allowed_tags = [tag for tag in all_tags if not filter_map[tag]]
         if not allowed_tags:
-            logger.warning("[T1] all tags restricted, returning message")
+            logger.warning(
+                f"[{self._log_operation}] all tags restricted, returning message"
+            )
             return {"message": PromptService.get_restricted_message(lang)}
 
         # 1. Closure: build vision message from captured image_raw, lang, allowed_tags
@@ -117,14 +123,16 @@ class PhraseSearchService(BaseService):
         async def _process_vision(response: Any) -> dict[str, Any]:
             usage = response.usage_metadata or {}
             self._queue_token_usage(
-                model=_T1_VISION_MODEL,
-                operation=self._VISION_OPERATION,
+                model=self._model_vision,
+                operation=self._vision_operation,
                 input_tokens=usage.get("input_tokens", 0),
                 output_tokens=usage.get("output_tokens", 0),
             )
             raw = response.content if response.content else ""
             if not raw:
-                logger.warning("[T1, step 1] vision returned empty response")
+                logger.warning(
+                    f"[{self._log_operation}, step 1] vision returned empty response"
+                )
                 return {
                     "gender": "male",
                     "tag_phrases": {},
@@ -133,7 +141,7 @@ class PhraseSearchService(BaseService):
                 }
             gender, tag_phrases = self._parse_vision_phrases(raw)
             logger.info(
-                f"[T1] step 1 — gender={gender}, extracted {len(tag_phrases)} phrase(s): {tag_phrases}"
+                f"[{self._log_operation}] step 1 — gender={gender}, extracted {len(tag_phrases)} phrase(s): {tag_phrases}"
             )
             return {
                 "gender": gender,
@@ -145,24 +153,26 @@ class PhraseSearchService(BaseService):
         # 3. Assemble full pipeline chain
         chain = (
             RunnableLambda(_build_message)
-            | self._vision_llm.with_config(
-                run_name=self._VISION_OPERATION,
+            | self._llm_vision.with_config(
+                run_name=self._vision_operation,
                 metadata={"ls_hide_inputs": True},
             )
             | RunnableLambda(_process_vision)
             | RunnableLambda(self._t1_embed_phrases)
             | RunnableLambda(self._t1_search_extract)
-        ).with_config(run_name=self._OPERATION)
+        ).with_config(run_name=self._operation)
 
         # 4. Invoke chain; wrap unexpected errors in T1PipelineException
         try:
             return await chain.ainvoke({"lang": lang, "mood_key": mood_key})
         except Exception as exc:
-            if not isinstance(exc, T1PipelineException):
-                logger.error("[T1] pipeline failed: %s", exc, exc_info=exc)
-            if isinstance(exc, T1PipelineException):
+            if not isinstance(exc, self._pipeline_exception_class):
+                logger.error(
+                    f"[{self._log_operation}] pipeline failed: {exc}", exc_info=exc
+                )
+            if isinstance(exc, self._pipeline_exception_class):
                 raise
-            raise T1PipelineException(detail=str(exc)) from exc
+            raise self._pipeline_exception_class(detail=str(exc)) from exc
 
     @log_decorator(level=logging.DEBUG)
     async def _t1_embed_phrases(self, inputs: dict[str, Any]) -> dict[str, Any]:
@@ -185,13 +195,15 @@ class PhraseSearchService(BaseService):
             }
         tags = list(tag_phrases.keys())
         phrases = list(tag_phrases.values())
-        vectors, input_tokens = await self._t1_embeddings.aembed_with_usage(
+        vectors, input_tokens = await self._llm_embeddings.aembed_with_usage(
             phrases, input_type="search_query"
         )
-        logger.info(f"[T1] step 2 — embedded {len(vectors)}/{len(phrases)} phrase(s)")
+        logger.info(
+            f"[{self._log_operation}] step 2 — embedded {len(vectors)}/{len(phrases)} phrase(s)"
+        )
         self._queue_token_usage(
-            model=_T1_EMBED_MODEL,
-            operation=self._EMBED_OPERATION,
+            model=self._model_embeddings,
+            operation=self._embed_operation,
             input_tokens=input_tokens,
         )
         return {
@@ -221,12 +233,14 @@ class PhraseSearchService(BaseService):
         )
         total = sum(len(r) for r in results)
         logger.info(
-            f"[T1] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)"
+            f"[{self._log_operation}] step 3 — search_batch returned {total} point(s) across {len(results)} vector(s)"
         )
         output = self._t1_extract_variants(
             results, mood_key=inputs["mood_key"], gender=inputs["gender"]
         )
-        logger.info(f"[T1] step 4 — {len(output)} unique original(s) in result")
+        logger.info(
+            f"[{self._log_operation}] step 4 — {len(output)} unique original(s) in result"
+        )
         return output
 
     @staticmethod
@@ -265,8 +279,7 @@ class PhraseSearchService(BaseService):
                     }
         return output
 
-    @staticmethod
-    def _parse_vision_phrases(raw: str) -> tuple[str, dict[str, str]]:
+    def _parse_vision_phrases(self, raw: str) -> tuple[str, dict[str, str]]:
         """Parse raw vision output as JSON object with gender and per-tag phrases
 
         :param:
@@ -302,8 +315,7 @@ class PhraseSearchService(BaseService):
                 return gender, result
         except Exception as exc:
             logger.error(
-                "[T1, step 1] failed to parse vision output: %s",
-                text[:300],
+                f"[{self._log_operation}, step 1] failed to parse vision output: {text[:300]}",
                 exc_info=exc,
             )
         return "male", {}

@@ -57,36 +57,42 @@ def _fake_vision_response(phrases: dict, gender: str = "male"):
 # --- _parse_vision_phrases ---
 
 
-def test_parse_vision_phrases_valid_json() -> None:
+def test_parse_vision_phrases_valid_json(test_service: PhraseSearchService) -> None:
     raw = json.dumps(
         {
             "gender": "female",
             "phrases": {"behavior": "typing fast", "appearance": "neat"},
         }
     )
-    gender, tag_phrases = PhraseSearchService._parse_vision_phrases(raw)
+    gender, tag_phrases = test_service._parse_vision_phrases(raw)
     assert gender == "female"
     assert tag_phrases == {"behavior": "typing fast", "appearance": "neat"}
 
 
-def test_parse_vision_phrases_invalid_json_defaults_to_male() -> None:
-    gender, tag_phrases = PhraseSearchService._parse_vision_phrases(
+def test_parse_vision_phrases_invalid_json_defaults_to_male(
+    test_service: PhraseSearchService,
+) -> None:
+    gender, tag_phrases = test_service._parse_vision_phrases(
         "not json at all {{ broken"
     )
     assert gender == "male"
     assert tag_phrases == {}
 
 
-def test_parse_vision_phrases_unknown_gender_defaults_to_male() -> None:
+def test_parse_vision_phrases_unknown_gender_defaults_to_male(
+    test_service: PhraseSearchService,
+) -> None:
     raw = json.dumps({"gender": "alien", "phrases": {"behavior": "something"}})
-    gender, _ = PhraseSearchService._parse_vision_phrases(raw)
+    gender, _ = test_service._parse_vision_phrases(raw)
     assert gender == "male"
 
 
-def test_parse_vision_phrases_strips_code_fence() -> None:
+def test_parse_vision_phrases_strips_code_fence(
+    test_service: PhraseSearchService,
+) -> None:
     inner = json.dumps({"gender": "male", "phrases": {"behavior": "looking focused"}})
     raw = f"```json\n{inner}\n```"
-    gender, tag_phrases = PhraseSearchService._parse_vision_phrases(raw)
+    gender, tag_phrases = test_service._parse_vision_phrases(raw)
     assert gender == "male"
     assert tag_phrases == {"behavior": "looking focused"}
 
@@ -147,8 +153,8 @@ async def test_t1_embed_phrases_empty_tag_phrases_returns_empty_vectors(
 async def test_t1_embed_phrases_returns_tag_vectors(
     test_service: PhraseSearchService,
 ) -> None:
-    test_service._t1_embeddings = MagicMock()
-    test_service._t1_embeddings.aembed_with_usage = AsyncMock(
+    test_service._llm_embeddings = MagicMock()
+    test_service._llm_embeddings.aembed_with_usage = AsyncMock(
         return_value=([[0.1, 0.2], [0.3, 0.4]], 20)
     )
     result = await test_service._t1_embed_phrases(
@@ -168,8 +174,8 @@ async def test_t1_embed_phrases_returns_tag_vectors(
 async def test_t1_embed_phrases_queues_token_usage(
     test_service: PhraseSearchService,
 ) -> None:
-    test_service._t1_embeddings = MagicMock()
-    test_service._t1_embeddings.aembed_with_usage = AsyncMock(
+    test_service._llm_embeddings = MagicMock()
+    test_service._llm_embeddings.aembed_with_usage = AsyncMock(
         return_value=([[0.1, 0.2]], 15)
     )
     await test_service._t1_embed_phrases(
@@ -262,7 +268,7 @@ async def test_t1_search_empty_phrases_returns_empty(
     async def _fake_vision(_):
         return _fake_vision_response(phrases={})
 
-    test_service._vision_llm = RunnableLambda(_fake_vision)
+    test_service._llm_vision = RunnableLambda(_fake_vision)
     result = await test_service.t1_search(
         image_raw=b"img",
         filters=TagExclusionFilters(),
@@ -278,7 +284,7 @@ async def test_t1_search_empty_vectors_returns_empty(
     async def _fake_vision(_):
         return _fake_vision_response(phrases={"behavior": "typing fast"})
 
-    test_service._vision_llm = RunnableLambda(_fake_vision)
+    test_service._llm_vision = RunnableLambda(_fake_vision)
     mocker.patch.object(
         test_service,
         "_t1_embed_phrases",
@@ -306,7 +312,7 @@ async def test_t1_search_success(test_service: PhraseSearchService, mocker) -> N
     async def _fake_vision(_):
         return _fake_vision_response(phrases={"behavior": "typing fast"})
 
-    test_service._vision_llm = RunnableLambda(_fake_vision)
+    test_service._llm_vision = RunnableLambda(_fake_vision)
     mocker.patch.object(
         test_service,
         "_t1_embed_phrases",

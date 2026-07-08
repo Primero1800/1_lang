@@ -1,7 +1,7 @@
 from datetime import date, datetime
 from typing import Any
 
-from pydantic import BaseModel, Field, ConfigDict
+from pydantic import BaseModel, ConfigDict
 
 from app.common.enums import WorkerStatusEnum
 
@@ -12,22 +12,6 @@ class HTTPExceptionResponse(BaseModel):
     detail: str
     headers: dict[str, Any]
     status_code: int
-
-
-class PhraseVariantsRequest(BaseModel):
-    """Request body for single phrase variant generation"""
-
-    phrase: str
-    tag: str
-    count: int = Field(default=5, ge=1, le=10)
-
-
-class PhraseVariantsResponse(BaseModel):
-    """Response containing generated phrase variants grouped by mood and gender"""
-
-    original: str
-    tag: str
-    variants: dict[str, dict[str, list[str]]]  # {mood: {gender: [phrases]}}
 
 
 class UploadImagesResponse(BaseModel):

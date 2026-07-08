@@ -181,7 +181,7 @@ class QdrantVectorClient(VectorClientAbstract):
                 await self._create_indexes()
         except Exception as exc:
             logger.error("Unexpected error while initializing collection", exc_info=exc)
-            raise exc
+            raise
         logger.debug("Qdrant vector client wrapper ready.")
 
     async def _create_indexes(self) -> None:
